@@ -4833,8 +4833,11 @@ class GameScene extends Phaser.Scene {
     if (runtimeObject.visualObject === this.player || runtimeObject.blockerObject === this.player) return;
     if (this.interactionSystem) this.interactionSystem.removeTarget(id);
     if (runtimeObject.blockerObject) {
-      if (this.blockingWorldObjects && this.blockingWorldObjects.contains(runtimeObject.blockerObject)) {
-        this.blockingWorldObjects.remove(runtimeObject.blockerObject, true, true);
+      const group = this.blockingWorldObjects;
+      // Phaser.GameObjects.Group#destroy sets children=undefined. During GameScene SHUTDOWN
+      // the StaticPhysicsGroup is destroyed before ChunkManager cleanup calls contains().
+      if (group && group.children && group.contains(runtimeObject.blockerObject)) {
+        group.remove(runtimeObject.blockerObject, true, true);
       } else if (runtimeObject.blockerObject.destroy) {
         runtimeObject.blockerObject.destroy();
       }
