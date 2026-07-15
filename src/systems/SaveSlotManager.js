@@ -1,9 +1,9 @@
 const SAVE_SLOT_KEYS = Object.freeze({
-  1: 'survival-save-slot-1-v1',
-  2: 'survival-save-slot-2-v1'
+  1: 'gamefromnazar-save-slot-1-v1',
+  2: 'gamefromnazar-save-slot-2-v1'
 });
-const LEGACY_SAVE_KEY = 'survival-save-v1';
-const SAVE_SLOT_MIGRATION_KEY = 'survival-save-migration-slots-v1';
+const LEGACY_SAVE_KEY = 'gamefromnazar-save-v1';
+const SAVE_SLOT_MIGRATION_KEY = 'gamefromnazar-save-migration-slots-v1';
 
 class SaveSlotManager {
   constructor(storage) {

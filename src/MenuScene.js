@@ -19,7 +19,7 @@ class MenuScene extends Phaser.Scene {
     this.add.rectangle(480, 270, 960, 540, 0x202a32);
     this.add.rectangle(480, 270, 900, 480, 0x111820, 0.96)
       .setStrokeStyle(3, 0x7da2b8, 0.8);
-    this.add.text(480, 54, 'ПРОТОТИП ВЫЖИВАЛКИ', {
+    this.add.text(480, 54, 'Nazar Survival', {
       fontFamily: 'Arial, sans-serif', fontSize: '34px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5);
     this.add.text(480, 91, 'Выберите слот сохранения', {

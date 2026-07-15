@@ -107,7 +107,7 @@ const autonomousHtml = `<!doctype html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <link rel="icon" href="data:,">
-    <title>Прототип выживалки — автономная версия</title>
+    <title>Nazar Survival — автономная версия</title>
     <style>\n${pageCss}    </style>
   </head>
   <body>
@@ -155,7 +155,7 @@ const pagesHtml = `<!doctype html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <link rel="icon" href="data:,">
-    <title>Прототип выживалки</title>
+    <title>Nazar Survival</title>
     <link rel="stylesheet" href="./styles/game.css">
   </head>
   <body>
@@ -197,7 +197,7 @@ const pagesHtml = `<!doctype html>
 
 const distDirectory = path.join(root, 'dist');
 ensureDirectory(distDirectory);
-const autonomousPath = path.join(distDirectory, 'survival-offline.html');
+const autonomousPath = path.join(distDirectory, 'gamefromnazar-offline.html');
 const autonomousSize = writeFileWithSize(autonomousPath, autonomousHtml);
 
 const docsDirectory = path.join(root, 'docs');

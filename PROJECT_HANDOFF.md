@@ -1,5 +1,24 @@
 # Передача проекта gamefrompchelka
 
+## Актуальный статус: Nazar Survival
+
+- Project: Nazar Survival
+- Repository: gamefromnazar
+- Local path: `C:\Users\PC\Documents\GitHub\gamefromnazar`
+- Base project: gamefrompchelka
+- Base tag: base-game-v1
+- Repository status: independent
+- Project type: expanded survival version
+- Current stage: project identity setup
+- Planned expansion:
+  - larger map;
+  - new characters;
+  - additional world content.
+
+Исходная игра `gamefrompchelka` (тег `base-game-v1`) служит стабильной базой. Изменения в `gamefromnazar` не должны затрагивать `gamefrompchelka`. Увеличение карты и добавление персонажей будут отдельными этапами. Изменение SaveState потребует отдельного решения о версии и миграции.
+
+Ниже сохранена техническая история и описание базового проекта; при расхождении приоритет у актуального статуса и фактического кода `gamefromnazar`.
+
 ## Назначение документа
 
 Этот файл предназначен для передачи проекта новому чату ChatGPT/Codex или другому разработчику. Он фиксирует технический контекст и состояние проекта на момент создания документа — 14 июля 2026 года.
@@ -27,7 +46,7 @@
 - Целевые платформы: desktop, Android Chrome, iPhone Safari.
 - Сборка: `node build.js`.
 - GitHub Pages: многофайловая версия в `docs`.
-- Автономная версия: `dist/survival-offline.html`.
+- Автономная версия: `dist/gamefromnazar-offline.html`.
 - Папку `docs` нельзя редактировать вручную: она обновляется через `node build.js`.
 
 ## Текущая архитектура запуска
@@ -98,7 +117,7 @@ scene: [MenuScene, GameScene]
 - `docs/index.html` — точка входа GitHub Pages.
 - `docs/src` — сгенерированная копия исходников.
 - `docs/lib/phaser.min.js` — локальный Phaser для GitHub Pages.
-- `dist/survival-offline.html` — Phaser, CSS и весь игровой JavaScript в одном файле.
+- `dist/gamefromnazar-offline.html` — Phaser, CSS и весь игровой JavaScript в одном файле.
 
 ## Фактические API, которые нужно сохранять
 
@@ -345,15 +364,17 @@ ChestUI.openPanel() / closePanel() / updateFromModels() / destroy()
 
 ### Ключи localStorage
 
+В `gamefromnazar` используются отдельные ключи, чтобы не конфликтовать с базовой игрой:
+
 ```text
-survival-save-slot-1-v1
-survival-save-slot-2-v1
+gamefromnazar-save-slot-1-v1
+gamefromnazar-save-slot-2-v1
 ```
 
-Старый ключ `survival-save-v1` используется только как источник одноразовой миграции. Маркер попытки миграции:
+Legacy-ключ одноразовой миграции внутри этого проекта: `gamefromnazar-save-v1`. Сохранения `gamefrompchelka` автоматически не импортируются. Маркер попытки миграции:
 
 ```text
-survival-save-migration-slots-v1
+gamefromnazar-save-migration-slots-v1
 ```
 
 ### Правила слотов
@@ -435,7 +456,7 @@ survival-save-migration-slots-v1
 - Проверены два последовательных LOAD.
 - SaveState и `VERSION = 1` не изменены.
 - Число регистраций постоянных collider осталось 4.
-- Последняя зафиксированная успешная сборка создала `dist/survival-offline.html` размером 1 431 114 байт и `docs/index.html` размером 2 088 байт.
+- Последняя зафиксированная успешная сборка базового проекта создавала `dist/survival-offline.html`; в `gamefromnazar` автономный файл называется `dist/gamefromnazar-offline.html`.
 - `src` и `docs/src` совпали по хешам, проверенные HTTP-файлы вернули 200.
 
 ## Подтверждённые Canvas-проверки последнего этапа
@@ -458,7 +479,7 @@ survival-save-migration-slots-v1
 
 ## Что ещё проверить вручную
 
-- Автономный `dist/survival-offline.html` интерактивно через локальное открытие файла.
+- Автономный `dist/gamefromnazar-offline.html` интерактивно через локальное открытие файла.
 - Повреждённый слот непосредственно в реальном меню.
 - ChestUI после повторного LOAD.
 - Два сундука в одном сеансе и независимость их содержимого.
