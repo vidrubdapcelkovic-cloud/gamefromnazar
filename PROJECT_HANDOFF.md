@@ -9,13 +9,27 @@
 - Base tag: base-game-v1
 - Repository status: independent
 - Project type: expanded survival version
-- Current stage: project identity setup
+- Current stage: chunked world stage 1
 - Planned expansion:
   - larger map;
   - new characters;
   - additional world content.
 
 Исходная игра `gamefrompchelka` (тег `base-game-v1`) служит стабильной базой. Изменения в `gamefromnazar` не должны затрагивать `gamefrompchelka`. Увеличение карты и добавление персонажей будут отдельными этапами. Изменение SaveState потребует отдельного решения о версии и миграции.
+
+## Chunked World Stage 1
+
+- New modules: src/world/ChunkMath.js, SeededRandom.js, ChunkGenerator.js, ChunkInstance.js, ChunkManager.js.
+- Owner: GameScene creates and destroys ChunkManager; ChunkManager owns active ChunkInstance map.
+- Lifecycle: sync 3×3 around player on chunk change; idempotent ChunkManager.destroy() / ChunkInstance.destroy() on scene shutdown.
+- Seed: created on new game (Date.now()), stored as optional SaveState worldSeed, restored on continue/load; SAVE does not regenerate it.
+- SaveState decision: VERSION remains 1; worldSeed is optional so old saves stay valid and receive a seed once on load.
+- Fallback: USE_CHUNKED_WORLD in GameScene.js; false keeps FixedMapData path.
+- Stage 1 limits: no chunk mutation persistence; building disabled in chunked mode; no procedural enemies; harvested resources may respawn after unload.
+- Visual fix: player/objects used `bottom * 0.1` depth; at negative world Y this fell below terrain Graphics (`-12`), so the player appeared missing. Terrain now uses `ChunkMath.CHUNK_TERRAIN_DEPTH = -1000000`. Entity depth still uses the existing Y-sort formula and stays under UI (`INTERFACE_DEPTH`).
+- Ownership: `ChunkInstance.destroy()` only removes ids prefixed with `chunk_` that it created; player is guarded in unregister.
+- Sync order: load missing 3×3 chunks, then unload outsiders; camera follow is not restarted; collideWorldBounds stays off in chunked mode.
+- Save regression was not part of this visual fix.
 
 Ниже сохранена техническая история и описание базового проекта; при расхождении приоритет у актуального статуса и фактического кода `gamefromnazar`.
 

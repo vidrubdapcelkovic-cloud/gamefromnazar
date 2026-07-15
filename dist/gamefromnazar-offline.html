@@ -358,6 +358,503 @@ class WorldGrid {
   }
 }
 
+const ChunkMath = Object.freeze({
+  TILE_SIZE: 32,
+  CHUNK_SIZE: 16,
+  // Terrain must stay below Y-scaled entity depths, including negative world Y.
+  CHUNK_TERRAIN_DEPTH: -1000000,
+
+  get CHUNK_PIXEL_SIZE() {
+    return this.TILE_SIZE * this.CHUNK_SIZE;
+  },
+
+  worldToTile(x, y, tileSize = this.TILE_SIZE) {
+    return {
+      tileX: Math.floor(x / tileSize),
+      tileY: Math.floor(y / tileSize)
+    };
+  },
+
+  tileToChunk(tileX, tileY, chunkSize = this.CHUNK_SIZE) {
+    return {
+      chunkX: Math.floor(tileX / chunkSize),
+      chunkY: Math.floor(tileY / chunkSize)
+    };
+  },
+
+  worldToChunk(x, y, tileSize = this.TILE_SIZE, chunkSize = this.CHUNK_SIZE) {
+    const tile = this.worldToTile(x, y, tileSize);
+    return this.tileToChunk(tile.tileX, tile.tileY, chunkSize);
+  },
+
+  chunkLocalToWorldTile(chunkX, chunkY, localTileX, localTileY, chunkSize = this.CHUNK_SIZE) {
+    return {
+      tileX: chunkX * chunkSize + localTileX,
+      tileY: chunkY * chunkSize + localTileY
+    };
+  },
+
+  worldTileToLocal(tileX, tileY, chunkSize = this.CHUNK_SIZE) {
+    const chunk = this.tileToChunk(tileX, tileY, chunkSize);
+    return {
+      chunkX: chunk.chunkX,
+      chunkY: chunk.chunkY,
+      localTileX: tileX - chunk.chunkX * chunkSize,
+      localTileY: tileY - chunk.chunkY * chunkSize
+    };
+  },
+
+  chunkKey(chunkX, chunkY) {
+    return `${chunkX},${chunkY}`;
+  },
+
+  parseChunkKey(key) {
+    const parts = String(key).split(',');
+    if (parts.length !== 2) return null;
+    const chunkX = Number(parts[0]);
+    const chunkY = Number(parts[1]);
+    if (!Number.isInteger(chunkX) || !Number.isInteger(chunkY)) return null;
+    return { chunkX, chunkY };
+  },
+
+  chunkOriginWorld(chunkX, chunkY, tileSize = this.TILE_SIZE, chunkSize = this.CHUNK_SIZE) {
+    return {
+      x: chunkX * chunkSize * tileSize,
+      y: chunkY * chunkSize * tileSize
+    };
+  },
+
+  localTileCenterWorld(chunkX, chunkY, localTileX, localTileY, tileSize = this.TILE_SIZE, chunkSize = this.CHUNK_SIZE) {
+    const origin = this.chunkOriginWorld(chunkX, chunkY, tileSize, chunkSize);
+    return {
+      x: origin.x + localTileX * tileSize + tileSize / 2,
+      y: origin.y + localTileY * tileSize + tileSize / 2
+    };
+  },
+
+  requiredChunkKeys(centerX, centerY, activeRadius = 1) {
+    const keys = [];
+    for (let offsetY = -activeRadius; offsetY <= activeRadius; offsetY += 1) {
+      for (let offsetX = -activeRadius; offsetX <= activeRadius; offsetX += 1) {
+        keys.push(this.chunkKey(centerX + offsetX, centerY + offsetY));
+      }
+    }
+    return keys;
+  }
+});
+class SeededRandom {
+  constructor(seed) {
+    let value = Number(seed);
+    if (!Number.isFinite(value)) value = 1;
+    this.state = (value >>> 0) || 1;
+  }
+
+  static hashParts(worldSeed, chunkX, chunkY, stream) {
+    let hash = 2166136261;
+
+    const mix = (value) => {
+      hash ^= value >>> 0;
+      hash = Math.imul(hash, 16777619);
+    };
+
+    if (typeof worldSeed === 'string') {
+      for (let index = 0; index < worldSeed.length; index += 1) {
+        mix(worldSeed.charCodeAt(index));
+      }
+    } else {
+      mix(Number(worldSeed) || 0);
+    }
+
+    mix(chunkX | 0);
+    mix(chunkY | 0);
+
+    if (typeof stream === 'string') {
+      for (let index = 0; index < stream.length; index += 1) {
+        mix(stream.charCodeAt(index));
+      }
+    } else {
+      mix(Number(stream) || 0);
+    }
+
+    return hash >>> 0;
+  }
+
+  static fromParts(worldSeed, chunkX, chunkY, stream) {
+    return new SeededRandom(SeededRandom.hashParts(worldSeed, chunkX, chunkY, stream));
+  }
+
+  next() {
+    let t = (this.state += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  nextInt(minInclusive, maxExclusive) {
+    if (!Number.isInteger(minInclusive) || !Number.isInteger(maxExclusive) || maxExclusive <= minInclusive) {
+      throw new Error('SeededRandom.nextInt expects integer min < max.');
+    }
+    return minInclusive + Math.floor(this.next() * (maxExclusive - minInclusive));
+  }
+}
+class ChunkGenerator {
+  static generate(worldSeed, chunkX, chunkY) {
+    const chunkSize = ChunkMath.CHUNK_SIZE;
+    const terrain = [];
+    for (let localY = 0; localY < chunkSize; localY += 1) {
+      const row = [];
+      for (let localX = 0; localX < chunkSize; localX += 1) {
+        row.push('G');
+      }
+      terrain.push(row);
+    }
+
+    const objects = [];
+    const occupied = new Set();
+    const isStartChunk = chunkX === 0 && chunkY === 0;
+    const clearMin = 8 - 3;
+    const clearMax = 8 + 3;
+    const rng = SeededRandom.fromParts(worldSeed, chunkX, chunkY, 'chunk-objects');
+
+    const isInStartClearZone = (localX, localY) => (
+      isStartChunk
+      && localX >= clearMin
+      && localX <= clearMax
+      && localY >= clearMin
+      && localY <= clearMax
+    );
+
+    const tryPlace = (type, localX, localY, variant) => {
+      if (!Number.isInteger(localX) || !Number.isInteger(localY)) return false;
+      if (localX < 0 || localX >= chunkSize || localY < 0 || localY >= chunkSize) return false;
+      const key = `${localX},${localY}`;
+      if (occupied.has(key) || isInStartClearZone(localX, localY)) return false;
+      occupied.add(key);
+      objects.push({
+        type,
+        localTileX: localX,
+        localTileY: localY,
+        variant
+      });
+      return true;
+    };
+
+    const placeScattered = (type, count, variantBase) => {
+      let placed = 0;
+      let attempts = 0;
+      const maxAttempts = count * 24;
+      while (placed < count && attempts < maxAttempts) {
+        attempts += 1;
+        const localX = rng.nextInt(0, chunkSize);
+        const localY = rng.nextInt(0, chunkSize);
+        if (tryPlace(type, localX, localY, variantBase + placed)) {
+          placed += 1;
+        }
+      }
+    };
+
+    const treeCount = isStartChunk ? rng.nextInt(4, 7) : rng.nextInt(5, 9);
+    const stoneCount = isStartChunk ? rng.nextInt(3, 6) : rng.nextInt(4, 7);
+    placeScattered('TREE', treeCount, 0);
+    placeScattered('ROCK', stoneCount, 0);
+
+    const spawnPoints = [];
+    if (isStartChunk) {
+      spawnPoints.push({ localTileX: 8, localTileY: 8 });
+    }
+
+    return {
+      chunkX,
+      chunkY,
+      terrain,
+      objects,
+      spawnPoints
+    };
+  }
+}
+class ChunkInstance {
+  constructor(scene, chunkData, options) {
+    this.scene = scene;
+    this.chunkX = chunkData.chunkX;
+    this.chunkY = chunkData.chunkY;
+    this.key = ChunkMath.chunkKey(this.chunkX, this.chunkY);
+    this.blockingGroup = options.blockingGroup;
+    this.onObjectCreated = options.onObjectCreated;
+    this.onObjectDestroyed = options.onObjectDestroyed;
+    this.destroyed = false;
+    this.ground = null;
+    this.ownedObjectIds = [];
+    this.createGround(chunkData);
+    this.createObjects(chunkData);
+  }
+
+  createGround(chunkData) {
+    const tileSize = ChunkMath.TILE_SIZE;
+    const chunkSize = ChunkMath.CHUNK_SIZE;
+    const origin = ChunkMath.chunkOriginWorld(this.chunkX, this.chunkY);
+    // Keep terrain far below Y-sorted world entities (negative world Y yields negative depth).
+    const graphics = this.scene.add.graphics().setDepth(ChunkMath.CHUNK_TERRAIN_DEPTH);
+
+    for (let localY = 0; localY < chunkSize; localY += 1) {
+      for (let localX = 0; localX < chunkSize; localX += 1) {
+        const x = origin.x + localX * tileSize;
+        const y = origin.y + localY * tileSize;
+        const shade = ((localX + localY) % 2 === 0) ? 0x527a45 : 0x4f7542;
+        graphics.fillStyle(shade, 1);
+        graphics.fillRect(x, y, tileSize, tileSize);
+        graphics.fillStyle(0x668d55, 1);
+        graphics.fillRect(x + 5, y + 7, 3, 3);
+        graphics.fillRect(x + 22, y + 19, 3, 3);
+        graphics.fillStyle(0x416a3b, 1);
+        graphics.fillRect(x + 14, y + 25, 2, 4);
+      }
+    }
+
+    this.ground = graphics;
+  }
+
+  createObjects(chunkData) {
+    chunkData.objects.forEach((objectData) => {
+      const worldTile = ChunkMath.chunkLocalToWorldTile(
+        this.chunkX,
+        this.chunkY,
+        objectData.localTileX,
+        objectData.localTileY
+      );
+      const position = ChunkMath.localTileCenterWorld(
+        this.chunkX,
+        this.chunkY,
+        objectData.localTileX,
+        objectData.localTileY
+      );
+      const id = `chunk_${this.chunkX}_${this.chunkY}_${objectData.type}_${objectData.localTileX}_${objectData.localTileY}`;
+      const textureKey = objectData.type === 'TREE' ? 'temporary-tree' : 'temporary-rock';
+      let gameObject;
+      let blockerObject = null;
+      let interactionX = position.x;
+      let interactionY = position.y;
+
+      if (objectData.type === 'ROCK') {
+        gameObject = this.blockingGroup.create(position.x, position.y, textureKey);
+        gameObject.body.setSize(24, 18);
+        gameObject.body.setOffset(4, 14);
+        gameObject.refreshBody();
+        blockerObject = gameObject;
+      } else {
+        gameObject = this.scene.add.image(position.x, position.y, textureKey);
+        const treeBounds = gameObject.getBounds();
+        const blocker = this.blockingGroup.create(
+          treeBounds.centerX,
+          treeBounds.bottom - 8,
+          'temporary-tree-blocker'
+        );
+        blocker.setVisible(false);
+        blocker.setDataEnabled();
+        blocker.setData('ownerId', id);
+        blocker.setData('type', objectData.type);
+        blocker.setData('col', worldTile.tileX);
+        blocker.setData('row', worldTile.tileY);
+        blockerObject = blocker;
+        interactionX = blocker.x;
+        interactionY = blocker.y;
+      }
+
+      gameObject.setDataEnabled();
+      gameObject.setData('id', id);
+      gameObject.setData('type', objectData.type);
+      gameObject.setData('col', worldTile.tileX);
+      gameObject.setData('row', worldTile.tileY);
+      gameObject.setData('chunkKey', this.key);
+      if (blockerObject && blockerObject !== gameObject) {
+        blockerObject.setData('chunkKey', this.key);
+      }
+      if (typeof this.scene.updateWorldDepth === 'function') {
+        this.scene.updateWorldDepth(gameObject);
+      } else {
+        gameObject.setDepth((position.y + gameObject.displayHeight / 2) * 0.1);
+      }
+
+      const interactionTarget = {
+        id,
+        type: objectData.type,
+        col: worldTile.tileX,
+        row: worldTile.tileY,
+        interactionX,
+        interactionY,
+        visualObject: gameObject
+      };
+
+      const runtimeObject = {
+        id,
+        type: objectData.type,
+        col: worldTile.tileX,
+        row: worldTile.tileY,
+        active: true,
+        visualObject: gameObject,
+        blockerObject,
+        interactionTarget,
+        chunkKey: this.key
+      };
+
+      this.ownedObjectIds.push(id);
+      if (typeof this.onObjectCreated === 'function') {
+        this.onObjectCreated(runtimeObject);
+      }
+    });
+  }
+
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+
+    this.ownedObjectIds.slice().forEach((id) => {
+      if (typeof id !== 'string' || !id.startsWith('chunk_')) return;
+      if (typeof this.onObjectDestroyed === 'function') {
+        this.onObjectDestroyed(id);
+      }
+    });
+    this.ownedObjectIds = [];
+
+    if (this.ground) {
+      this.ground.destroy();
+      this.ground = null;
+    }
+
+    this.scene = null;
+    this.blockingGroup = null;
+    this.onObjectCreated = null;
+    this.onObjectDestroyed = null;
+  }
+}
+class ChunkWorldGrid {
+  constructor(tileSize = ChunkMath.TILE_SIZE) {
+    this.tileSize = tileSize;
+    this.columns = 0;
+    this.rows = 0;
+    this.worldWidth = 0;
+    this.worldHeight = 0;
+  }
+
+  isInside(col, row) {
+    return Number.isInteger(col) && Number.isInteger(row);
+  }
+
+  getTileType(col, row) {
+    return this.isInside(col, row) ? 'G' : null;
+  }
+
+  isWalkable(col, row) {
+    return this.isInside(col, row);
+  }
+
+  worldToCell(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return {
+      col: Math.floor(x / this.tileSize),
+      row: Math.floor(y / this.tileSize)
+    };
+  }
+
+  cellToWorldCenter(col, row) {
+    if (!this.isInside(col, row)) return null;
+    return {
+      x: col * this.tileSize + this.tileSize / 2,
+      y: row * this.tileSize + this.tileSize / 2
+    };
+  }
+}
+
+class ChunkManager {
+  constructor(scene, options) {
+    this.scene = scene;
+    this.worldSeed = options.worldSeed;
+    this.blockingGroup = options.blockingGroup;
+    this.onObjectCreated = options.onObjectCreated;
+    this.onObjectDestroyed = options.onObjectDestroyed;
+    this.onChunkSetChanged = options.onChunkSetChanged;
+    this.activeRadius = Number.isInteger(options.activeRadius) ? options.activeRadius : 1;
+    this.chunks = new Map();
+    this.centerChunkX = null;
+    this.centerChunkY = null;
+    this.destroyed = false;
+  }
+
+  getActiveCount() {
+    return this.chunks.size;
+  }
+
+  getCenterChunk() {
+    if (this.centerChunkX === null || this.centerChunkY === null) return null;
+    return { chunkX: this.centerChunkX, chunkY: this.centerChunkY };
+  }
+
+  syncAround(worldX, worldY) {
+    if (this.destroyed) return false;
+    const chunk = ChunkMath.worldToChunk(worldX, worldY);
+    if (this.centerChunkX === chunk.chunkX && this.centerChunkY === chunk.chunkY && this.chunks.size > 0) {
+      return false;
+    }
+    this.centerChunkX = chunk.chunkX;
+    this.centerChunkY = chunk.chunkY;
+    this.loadWindow(chunk.chunkX, chunk.chunkY);
+    return true;
+  }
+
+  loadWindow(centerX, centerY) {
+    if (this.destroyed) return;
+
+    const neededKeys = ChunkMath.requiredChunkKeys(centerX, centerY, this.activeRadius);
+    const needed = new Set(neededKeys);
+
+    // 1) Load missing chunks first so the new center is present before unload.
+    neededKeys.forEach((key) => {
+      if (this.chunks.has(key)) return;
+      const parsed = ChunkMath.parseChunkKey(key);
+      if (!parsed) return;
+      const data = ChunkGenerator.generate(this.worldSeed, parsed.chunkX, parsed.chunkY);
+      const instance = new ChunkInstance(this.scene, data, {
+        blockingGroup: this.blockingGroup,
+        onObjectCreated: this.onObjectCreated,
+        onObjectDestroyed: this.onObjectDestroyed
+      });
+      this.chunks.set(key, instance);
+    });
+
+    // 2) Only then destroy chunks outside the required set. Never touch the player.
+    Array.from(this.chunks.keys()).forEach((key) => {
+      if (needed.has(key)) return;
+      const instance = this.chunks.get(key);
+      this.chunks.delete(key);
+      if (instance) instance.destroy();
+    });
+
+    if (typeof this.onChunkSetChanged === 'function') {
+      this.onChunkSetChanged();
+    }
+  }
+
+  getSpawnWorldPosition() {
+    const data = ChunkGenerator.generate(this.worldSeed, 0, 0);
+    const spawn = data.spawnPoints[0] || { localTileX: 8, localTileY: 8 };
+    const worldTile = ChunkMath.chunkLocalToWorldTile(0, 0, spawn.localTileX, spawn.localTileY);
+    return {
+      x: worldTile.tileX * ChunkMath.TILE_SIZE + ChunkMath.TILE_SIZE / 2,
+      y: worldTile.tileY * ChunkMath.TILE_SIZE + ChunkMath.TILE_SIZE / 2
+    };
+  }
+
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    Array.from(this.chunks.values()).forEach((instance) => instance.destroy());
+    this.chunks.clear();
+    this.scene = null;
+    this.blockingGroup = null;
+    this.onObjectCreated = null;
+    this.onObjectDestroyed = null;
+    this.onChunkSetChanged = null;
+  }
+}
 class InteractionSystem {
   constructor(radius = 72) {
     this.radius = radius;
@@ -1712,11 +2209,27 @@ class SaveSystem {
         }
         return normalized;
       });
-      return { version: 1, savedAt: state.savedAt,
+      let worldSeed;
+      if (state.worldSeed !== undefined && state.worldSeed !== null) {
+        if (typeof state.worldSeed === 'number'
+          && Number.isFinite(state.worldSeed)
+          && Number.isInteger(state.worldSeed)) {
+          worldSeed = state.worldSeed;
+        } else if (typeof state.worldSeed === 'string'
+          && state.worldSeed.length > 0
+          && state.worldSeed.length <= 64) {
+          worldSeed = state.worldSeed;
+        } else {
+          return null;
+        }
+      }
+      const normalized = { version: 1, savedAt: state.savedAt,
         player: { x: p.x, y: p.y, health: p.health, hunger: p.hunger },
         dayNight,
         inventory: { activeHotbarIndex: inv.activeHotbarIndex, slots },
         world: { removedObjectIds, groundItems, walls, deadCreatureIds } };
+      if (worldSeed !== undefined) normalized.worldSeed = worldSeed;
+      return normalized;
     } catch { return null; }
   }
 
@@ -4104,6 +4617,8 @@ const SLIME_SPAWN_CELLS = Object.freeze([
   Object.freeze({ col: 8, row: 8 }), Object.freeze({ col: 39, row: 8 }),
   Object.freeze({ col: 8, row: 28 }), Object.freeze({ col: 39, row: 28 })
 ]);
+const USE_CHUNKED_WORLD = true;
+const CHUNK_WORLD_DEBUG = true;
 
 class GameScene extends Phaser.Scene {
   constructor() {
@@ -4128,6 +4643,11 @@ class GameScene extends Phaser.Scene {
     this.saveSystem = new SaveSystem(this.saveSlotManager, this.activeSlotId);
     this.isApplyingSave = false;
     this.isDeathHandled = false;
+    this.useChunkedWorld = USE_CHUNKED_WORLD;
+    this.worldSeed = this.resolveWorldSeedForSession();
+    this.chunkManager = null;
+    this.chunkDebugText = null;
+    this.chunkWorldCleanupDone = false;
     this.createWorld();
     this.createPlayer();
     this.createWorldObjects();
@@ -4182,6 +4702,7 @@ class GameScene extends Phaser.Scene {
   }
 
   canBuild() {
+    if (this.useChunkedWorld) return false;
     return !this.isApplyingSave && !this.isPlayerDead() && !this.isModalOpen();
   }
 
@@ -4208,7 +4729,171 @@ class GameScene extends Phaser.Scene {
     return !this.isApplyingSave && !this.exitConfirmOpen;
   }
 
+  createNewWorldSeed() {
+    return Date.now();
+  }
+
+  resolveWorldSeedForSession() {
+    if (this.launchMode === 'continue') {
+      const loaded = this.saveSystem.load();
+      if (loaded.success && loaded.state && loaded.state.worldSeed !== undefined && loaded.state.worldSeed !== null) {
+        return loaded.state.worldSeed;
+      }
+      return this.createNewWorldSeed();
+    }
+    return this.createNewWorldSeed();
+  }
+
+  createChunkedWorld() {
+    this.worldGrid = new ChunkWorldGrid(ChunkMath.TILE_SIZE);
+    this.physics.world.setBounds(-1000000, -1000000, 2000000, 2000000);
+    this.ensureSurfaceTileTexture();
+    this.createChunkedSurfaceLayer();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupChunkedWorld, this);
+    this.events.once(Phaser.Scenes.Events.DESTROY, this.cleanupChunkedWorld, this);
+  }
+
+  ensureSurfaceTileTexture() {
+    const textureKey = 'temporary-surface-tiles';
+    const tileSize = ChunkMath.TILE_SIZE;
+    if (this.textures.exists(textureKey)) return;
+    const tiles = this.make.graphics({ x: 0, y: 0, add: false });
+    tiles.fillStyle(0x527a45, 1);
+    tiles.fillRect(0, 0, tileSize, tileSize);
+    tiles.fillStyle(0x668d55, 1);
+    tiles.fillRect(5, 7, 3, 3);
+    tiles.fillRect(22, 19, 3, 3);
+    tiles.fillStyle(0x416a3b, 1);
+    tiles.fillRect(14, 25, 2, 4);
+    tiles.fillStyle(0xc9aa62, 1);
+    tiles.fillRect(tileSize, 0, tileSize, tileSize);
+    tiles.fillStyle(0x2f6f9f, 1);
+    tiles.fillRect(tileSize * 2, 0, tileSize, tileSize);
+    tiles.fillStyle(0x696c70, 1);
+    tiles.fillRect(tileSize * 3, 0, tileSize, tileSize);
+    tiles.generateTexture(textureKey, tileSize * 4, tileSize);
+    tiles.destroy();
+  }
+
+  createChunkedSurfaceLayer() {
+    const tileSize = ChunkMath.TILE_SIZE;
+    const textureKey = 'temporary-surface-tiles';
+    this.surfaceMap = this.make.tilemap({
+      data: [[SURFACE_TILE_INDICES.G]],
+      tileWidth: tileSize,
+      tileHeight: tileSize
+    });
+    const tileset = this.surfaceMap.addTilesetImage(
+      textureKey,
+      textureKey,
+      tileSize,
+      tileSize,
+      0,
+      0,
+      0
+    );
+    this.surfaceLayer = this.surfaceMap.createLayer(0, tileset, 0, 0);
+    this.surfaceLayer.setDepth(ChunkMath.CHUNK_TERRAIN_DEPTH);
+    this.surfaceLayer.setVisible(false);
+  }
+
+  createChunkedWorldObjects() {
+    this.interactionSystem = new InteractionSystem(72);
+    this.interactionSystem.setTargets([]);
+    this.worldObjectsCollider = this.physics.add.collider(
+      this.player,
+      this.blockingWorldObjects
+    );
+    this.chunkManager = new ChunkManager(this, {
+      worldSeed: this.worldSeed,
+      blockingGroup: this.blockingWorldObjects,
+      onObjectCreated: (runtimeObject) => this.registerChunkWorldObject(runtimeObject),
+      onObjectDestroyed: (id) => this.unregisterChunkWorldObject(id),
+      onChunkSetChanged: () => this.refreshInteractionTargets()
+    });
+    this.chunkManager.syncAround(this.player.x, this.player.y);
+    this.refreshInteractionTargets();
+    this.createChunkDebugOverlay();
+  }
+
+  registerChunkWorldObject(runtimeObject) {
+    if (!this.runtimeWorldObjects) return;
+    this.runtimeWorldObjects.set(runtimeObject.id, runtimeObject);
+    if (runtimeObject.visualObject) this.worldObjects.push(runtimeObject.visualObject);
+    if (runtimeObject.blockerObject && runtimeObject.blockerObject !== runtimeObject.visualObject) {
+      this.treeBlockers.push(runtimeObject.blockerObject);
+    }
+  }
+
+  unregisterChunkWorldObject(id) {
+    if (!this.runtimeWorldObjects) return;
+    if (typeof id !== 'string' || !id.startsWith('chunk_')) return;
+    const runtimeObject = this.runtimeWorldObjects.get(id);
+    if (!runtimeObject) return;
+    if (runtimeObject.visualObject === this.player || runtimeObject.blockerObject === this.player) return;
+    if (this.interactionSystem) this.interactionSystem.removeTarget(id);
+    if (runtimeObject.blockerObject) {
+      if (this.blockingWorldObjects && this.blockingWorldObjects.contains(runtimeObject.blockerObject)) {
+        this.blockingWorldObjects.remove(runtimeObject.blockerObject, true, true);
+      } else if (runtimeObject.blockerObject.destroy) {
+        runtimeObject.blockerObject.destroy();
+      }
+    }
+    if (runtimeObject.visualObject && runtimeObject.visualObject !== runtimeObject.blockerObject) {
+      runtimeObject.visualObject.destroy();
+    }
+    this.runtimeWorldObjects.delete(id);
+    this.worldObjects = this.worldObjects.filter((object) => object !== runtimeObject.visualObject);
+    this.treeBlockers = this.treeBlockers.filter((object) => object !== runtimeObject.blockerObject);
+  }
+
+  createChunkDebugOverlay() {
+    if (!CHUNK_WORLD_DEBUG) return;
+    this.chunkDebugText = this.add.text(12, 12, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: '#d7ffe0',
+      backgroundColor: '#000000aa'
+    }).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 50).setPadding(6, 4, 6, 4);
+    this.updateChunkDebugOverlay();
+  }
+
+  updateChunkDebugOverlay() {
+    if (!this.chunkDebugText || !this.chunkManager || !this.player) return;
+    const tile = ChunkMath.worldToTile(this.player.x, this.player.y);
+    const chunk = ChunkMath.worldToChunk(this.player.x, this.player.y);
+    this.chunkDebugText.setText([
+      `seed: ${this.worldSeed}`,
+      `tile: ${tile.tileX}, ${tile.tileY}`,
+      `chunk: ${chunk.chunkX}, ${chunk.chunkY}`,
+      `active: ${this.chunkManager.getActiveCount()}`,
+      `pos: ${Math.round(this.player.x)}, ${Math.round(this.player.y)}`,
+      `depth: ${this.player.depth}`,
+      `vis: ${this.player.visible}/${this.player.active}`
+    ].join('\n'));
+  }
+
+  cleanupChunkedWorld() {
+    if (this.chunkWorldCleanupDone) return;
+    this.chunkWorldCleanupDone = true;
+    if (this.chunkManager) {
+      this.chunkManager.destroy();
+      this.chunkManager = null;
+    }
+    if (this.chunkDebugText) {
+      this.chunkDebugText.destroy();
+      this.chunkDebugText = null;
+    }
+    this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.cleanupChunkedWorld, this);
+    this.events.off(Phaser.Scenes.Events.DESTROY, this.cleanupChunkedWorld, this);
+  }
+
+
   createWorld() {
+    if (this.useChunkedWorld) {
+      this.createChunkedWorld();
+      return;
+    }
     this.worldGrid = new WorldGrid(FixedMapData);
     this.physics.world.setBounds(0, 0, this.worldGrid.worldWidth, this.worldGrid.worldHeight);
 
@@ -4396,35 +5081,40 @@ class GameScene extends Phaser.Scene {
       playerTexture.destroy();
     }
 
-    const { col, row } = FixedMapData.playerStart;
+    let startPosition;
+    if (this.useChunkedWorld) {
+      const spawn = ChunkMath.chunkLocalToWorldTile(0, 0, 8, 8);
+      startPosition = this.worldGrid.cellToWorldCenter(spawn.tileX, spawn.tileY);
+    } else {
+      const { col, row } = FixedMapData.playerStart;
 
-    if (!this.worldGrid.isInside(col, row)) {
-      throw new Error(`Стартовая клетка игрока находится вне карты (col: ${col}, row: ${row}).`);
-    }
+      if (!this.worldGrid.isInside(col, row)) {
+        throw new Error(`Стартовая клетка игрока находится вне карты (col: ${col}, row: ${row}).`);
+      }
 
-    if (!this.worldGrid.isWalkable(col, row)) {
-      const tileType = this.worldGrid.getTileType(col, row);
-      throw new Error(
-        `Стартовая клетка игрока непроходима (col: ${col}, row: ${row}, тип: ${tileType ?? 'неизвестен'}).`
-      );
-    }
+      if (!this.worldGrid.isWalkable(col, row)) {
+        const tileType = this.worldGrid.getTileType(col, row);
+        throw new Error(
+          `Стартовая клетка игрока непроходима (col: ${col}, row: ${row}, тип: ${tileType ?? 'неизвестен'}).`
+        );
+      }
 
-    const startPosition = this.worldGrid.cellToWorldCenter(col, row);
-    if (startPosition === null) {
-      throw new Error(
-        `Не удалось преобразовать стартовую клетку игрока в координаты мира (col: ${col}, row: ${row}).`
-      );
+      startPosition = this.worldGrid.cellToWorldCenter(col, row);
+      if (startPosition === null) {
+        throw new Error(
+          `Не удалось преобразовать стартовую клетку игрока в координаты мира (col: ${col}, row: ${row}).`
+        );
+      }
     }
 
     this.player = this.physics.add.sprite(startPosition.x, startPosition.y, 'player');
-    this.player.setCollideWorldBounds(true);
+    this.player.setCollideWorldBounds(!this.useChunkedWorld);
     this.player.body.setSize(40, 40);
     this.playerMapCollider = this.physics.add.collider(this.player, this.surfaceLayer);
     this.updateWorldDepth(this.player);
   }
 
   createWorldObjects() {
-    this.validateWorldObjects();
     this.createWorldObjectTextures();
     this.createGroundItemTextures();
 
@@ -4434,6 +5124,13 @@ class GameScene extends Phaser.Scene {
     this.runtimeWorldObjects = new Map();
     this.blockingWorldObjects = this.physics.add.staticGroup();
     this.groundItemSystem = new GroundItemSystem(this, ITEM_TEXTURE_KEYS);
+
+    if (this.useChunkedWorld) {
+      this.createChunkedWorldObjects();
+      return;
+    }
+
+    this.validateWorldObjects();
 
     FixedWorldObjects.forEach((objectData) => {
       const position = this.worldGrid.cellToWorldCenter(objectData.col, objectData.row);
@@ -4636,16 +5333,18 @@ class GameScene extends Phaser.Scene {
 
   createCreatureSystem() {
     this.creatureSystem = new CreatureSystem(this);
-    SLIME_SPAWN_CELLS.forEach(({ col, row }) => {
-      if (!this.worldGrid.isWalkable(col, row)
-        || Array.from(this.runtimeWorldObjects.values()).some(
-          (object) => object.active && object.col === col && object.row === row
-        )) {
-        throw new Error(`Недопустимая клетка появления слизня (${col}, ${row}).`);
-      }
-      const position = this.worldGrid.cellToWorldCenter(col, row);
-      this.creatureSystem.spawn('SLIME', position.x, position.y, `SLIME_${col}_${row}`);
-    });
+    if (!this.useChunkedWorld) {
+      SLIME_SPAWN_CELLS.forEach(({ col, row }) => {
+        if (!this.worldGrid.isWalkable(col, row)
+          || Array.from(this.runtimeWorldObjects.values()).some(
+            (object) => object.active && object.col === col && object.row === row
+          )) {
+          throw new Error(`Недопустимая клетка появления слизня (${col}, ${row}).`);
+        }
+        const position = this.worldGrid.cellToWorldCenter(col, row);
+        this.creatureSystem.spawn('SLIME', position.x, position.y, `SLIME_${col}_${row}`);
+      });
+    }
     this.creatureMapCollider = this.physics.add.collider(this.creatureSystem.group, this.surfaceLayer);
     this.creatureObstacleCollider = this.physics.add.collider(
       this.creatureSystem.group,
@@ -5436,7 +6135,11 @@ class GameScene extends Phaser.Scene {
 
   createCamera() {
     const camera = this.cameras.main;
-    camera.setBounds(0, 0, this.worldGrid.worldWidth, this.worldGrid.worldHeight);
+    if (this.useChunkedWorld) {
+      camera.removeBounds();
+    } else {
+      camera.setBounds(0, 0, this.worldGrid.worldWidth, this.worldGrid.worldHeight);
+    }
     camera.startFollow(this.player, true, 0.09, 0.09);
     camera.setRoundPixels(true);
   }
@@ -5631,7 +6334,7 @@ class GameScene extends Phaser.Scene {
 
   createSaveState() {
     const stats = this.playerStatsModel.exportState();
-    return { version: 1, savedAt: Date.now(), player: { x: this.player.x, y: this.player.y, ...stats },
+    const state = { version: 1, savedAt: Date.now(), player: { x: this.player.x, y: this.player.y, ...stats },
       dayNight: this.dayNightSystem.exportState(),
       inventory: { activeHotbarIndex: this.inventoryUI.getActiveHotbarIndex(), slots: this.inventoryModel.exportState() },
       world: {
@@ -5639,6 +6342,10 @@ class GameScene extends Phaser.Scene {
         groundItems: this.groundItemSystem.exportState(), walls: this.buildingSystem.exportState(),
         deadCreatureIds: this.creatureSystem.exportState()
       } };
+    if (this.worldSeed !== undefined && this.worldSeed !== null) {
+      state.worldSeed = this.worldSeed;
+    }
+    return state;
   }
 
   prepareForSaveOperation() {
@@ -5697,6 +6404,17 @@ class GameScene extends Phaser.Scene {
 
   findSafePlayerPosition(x, y) {
     if (this.isSavedPositionValid(x, y)) return { x, y };
+    if (this.useChunkedWorld) {
+      if (this.chunkManager) {
+        this.chunkManager.syncAround(x, y);
+      }
+      if (this.isSavedPositionValid(x, y)) return { x, y };
+      const spawn = this.chunkManager
+        ? this.chunkManager.getSpawnWorldPosition()
+        : this.worldGrid.cellToWorldCenter(8, 8);
+      if (spawn && this.isSavedPositionValid(spawn.x, spawn.y)) return spawn;
+      return spawn || { x: 8 * 32 + 16, y: 8 * 32 + 16 };
+    }
     const start = FixedMapData.playerStart;
     const cells = [];
     for (let row = 0; row < this.worldGrid.rows; row += 1) for (let col = 0; col < this.worldGrid.columns; col += 1) {
@@ -5713,14 +6431,29 @@ class GameScene extends Phaser.Scene {
   applySaveState(state) {
     if (!this.inventoryModel.importState(state.inventory.slots)
       || !this.playerStatsModel.importState(state.player)) throw new Error('Ошибка импорта сохранения.');
+    if (state.worldSeed !== undefined && state.worldSeed !== null) {
+      this.worldSeed = state.worldSeed;
+      if (this.chunkManager) this.chunkManager.worldSeed = state.worldSeed;
+    } else if (this.worldSeed === undefined || this.worldSeed === null) {
+      this.worldSeed = this.createNewWorldSeed();
+      if (this.chunkManager) this.chunkManager.worldSeed = this.worldSeed;
+    }
     this.dayNightSystem.importState(state.dayNight);
     this.applyDayNightVisuals(true);
-    this.restoreRemovedWorldObjects(state.world.removedObjectIds);
+    if (!this.useChunkedWorld) {
+      this.restoreRemovedWorldObjects(state.world.removedObjectIds);
+    }
     if (!this.groundItemSystem.restoreState(state.world.groundItems)
-      || !this.buildingSystem.restoreState(state.world.walls)
-      || !this.creatureSystem.restoreState(state.world.deadCreatureIds)) throw new Error('Ошибка импорта сохранения.');
+      || !this.buildingSystem.restoreState(this.useChunkedWorld ? [] : state.world.walls)
+      || !this.creatureSystem.restoreState(this.useChunkedWorld ? [] : state.world.deadCreatureIds)) {
+      throw new Error('Ошибка импорта сохранения.');
+    }
     this.refreshInteractionTargets();
     const position = this.findSafePlayerPosition(state.player.x, state.player.y);
+    if (this.chunkManager) {
+      this.chunkManager.syncAround(position.x, position.y);
+      this.refreshInteractionTargets();
+    }
     this.player.setVisible(true);
     this.player.body.enable = true;
     this.player.setPosition(position.x, position.y); this.player.body.reset(position.x, position.y);
@@ -6571,6 +7304,15 @@ class GameScene extends Phaser.Scene {
 
     this.player.setVelocity(movement.x, movement.y);
     this.updateWorldDepth(this.player);
+    if (this.chunkManager) {
+      const synced = this.chunkManager.syncAround(this.player.x, this.player.y);
+      if (synced) {
+        this.player.setActive(true);
+        this.player.setVisible(true);
+        this.updateWorldDepth(this.player);
+      }
+      this.updateChunkDebugOverlay();
+    }
     this.collectNearbyGroundItems();
     if (this.buildingSystem.isActive()) {
       this.updateBuildingPreview();

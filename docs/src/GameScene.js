@@ -28,6 +28,8 @@ const SLIME_SPAWN_CELLS = Object.freeze([
   Object.freeze({ col: 8, row: 8 }), Object.freeze({ col: 39, row: 8 }),
   Object.freeze({ col: 8, row: 28 }), Object.freeze({ col: 39, row: 28 })
 ]);
+const USE_CHUNKED_WORLD = true;
+const CHUNK_WORLD_DEBUG = true;
 
 class GameScene extends Phaser.Scene {
   constructor() {
@@ -52,6 +54,11 @@ class GameScene extends Phaser.Scene {
     this.saveSystem = new SaveSystem(this.saveSlotManager, this.activeSlotId);
     this.isApplyingSave = false;
     this.isDeathHandled = false;
+    this.useChunkedWorld = USE_CHUNKED_WORLD;
+    this.worldSeed = this.resolveWorldSeedForSession();
+    this.chunkManager = null;
+    this.chunkDebugText = null;
+    this.chunkWorldCleanupDone = false;
     this.createWorld();
     this.createPlayer();
     this.createWorldObjects();
@@ -106,6 +113,7 @@ class GameScene extends Phaser.Scene {
   }
 
   canBuild() {
+    if (this.useChunkedWorld) return false;
     return !this.isApplyingSave && !this.isPlayerDead() && !this.isModalOpen();
   }
 
@@ -132,7 +140,171 @@ class GameScene extends Phaser.Scene {
     return !this.isApplyingSave && !this.exitConfirmOpen;
   }
 
+  createNewWorldSeed() {
+    return Date.now();
+  }
+
+  resolveWorldSeedForSession() {
+    if (this.launchMode === 'continue') {
+      const loaded = this.saveSystem.load();
+      if (loaded.success && loaded.state && loaded.state.worldSeed !== undefined && loaded.state.worldSeed !== null) {
+        return loaded.state.worldSeed;
+      }
+      return this.createNewWorldSeed();
+    }
+    return this.createNewWorldSeed();
+  }
+
+  createChunkedWorld() {
+    this.worldGrid = new ChunkWorldGrid(ChunkMath.TILE_SIZE);
+    this.physics.world.setBounds(-1000000, -1000000, 2000000, 2000000);
+    this.ensureSurfaceTileTexture();
+    this.createChunkedSurfaceLayer();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupChunkedWorld, this);
+    this.events.once(Phaser.Scenes.Events.DESTROY, this.cleanupChunkedWorld, this);
+  }
+
+  ensureSurfaceTileTexture() {
+    const textureKey = 'temporary-surface-tiles';
+    const tileSize = ChunkMath.TILE_SIZE;
+    if (this.textures.exists(textureKey)) return;
+    const tiles = this.make.graphics({ x: 0, y: 0, add: false });
+    tiles.fillStyle(0x527a45, 1);
+    tiles.fillRect(0, 0, tileSize, tileSize);
+    tiles.fillStyle(0x668d55, 1);
+    tiles.fillRect(5, 7, 3, 3);
+    tiles.fillRect(22, 19, 3, 3);
+    tiles.fillStyle(0x416a3b, 1);
+    tiles.fillRect(14, 25, 2, 4);
+    tiles.fillStyle(0xc9aa62, 1);
+    tiles.fillRect(tileSize, 0, tileSize, tileSize);
+    tiles.fillStyle(0x2f6f9f, 1);
+    tiles.fillRect(tileSize * 2, 0, tileSize, tileSize);
+    tiles.fillStyle(0x696c70, 1);
+    tiles.fillRect(tileSize * 3, 0, tileSize, tileSize);
+    tiles.generateTexture(textureKey, tileSize * 4, tileSize);
+    tiles.destroy();
+  }
+
+  createChunkedSurfaceLayer() {
+    const tileSize = ChunkMath.TILE_SIZE;
+    const textureKey = 'temporary-surface-tiles';
+    this.surfaceMap = this.make.tilemap({
+      data: [[SURFACE_TILE_INDICES.G]],
+      tileWidth: tileSize,
+      tileHeight: tileSize
+    });
+    const tileset = this.surfaceMap.addTilesetImage(
+      textureKey,
+      textureKey,
+      tileSize,
+      tileSize,
+      0,
+      0,
+      0
+    );
+    this.surfaceLayer = this.surfaceMap.createLayer(0, tileset, 0, 0);
+    this.surfaceLayer.setDepth(ChunkMath.CHUNK_TERRAIN_DEPTH);
+    this.surfaceLayer.setVisible(false);
+  }
+
+  createChunkedWorldObjects() {
+    this.interactionSystem = new InteractionSystem(72);
+    this.interactionSystem.setTargets([]);
+    this.worldObjectsCollider = this.physics.add.collider(
+      this.player,
+      this.blockingWorldObjects
+    );
+    this.chunkManager = new ChunkManager(this, {
+      worldSeed: this.worldSeed,
+      blockingGroup: this.blockingWorldObjects,
+      onObjectCreated: (runtimeObject) => this.registerChunkWorldObject(runtimeObject),
+      onObjectDestroyed: (id) => this.unregisterChunkWorldObject(id),
+      onChunkSetChanged: () => this.refreshInteractionTargets()
+    });
+    this.chunkManager.syncAround(this.player.x, this.player.y);
+    this.refreshInteractionTargets();
+    this.createChunkDebugOverlay();
+  }
+
+  registerChunkWorldObject(runtimeObject) {
+    if (!this.runtimeWorldObjects) return;
+    this.runtimeWorldObjects.set(runtimeObject.id, runtimeObject);
+    if (runtimeObject.visualObject) this.worldObjects.push(runtimeObject.visualObject);
+    if (runtimeObject.blockerObject && runtimeObject.blockerObject !== runtimeObject.visualObject) {
+      this.treeBlockers.push(runtimeObject.blockerObject);
+    }
+  }
+
+  unregisterChunkWorldObject(id) {
+    if (!this.runtimeWorldObjects) return;
+    if (typeof id !== 'string' || !id.startsWith('chunk_')) return;
+    const runtimeObject = this.runtimeWorldObjects.get(id);
+    if (!runtimeObject) return;
+    if (runtimeObject.visualObject === this.player || runtimeObject.blockerObject === this.player) return;
+    if (this.interactionSystem) this.interactionSystem.removeTarget(id);
+    if (runtimeObject.blockerObject) {
+      if (this.blockingWorldObjects && this.blockingWorldObjects.contains(runtimeObject.blockerObject)) {
+        this.blockingWorldObjects.remove(runtimeObject.blockerObject, true, true);
+      } else if (runtimeObject.blockerObject.destroy) {
+        runtimeObject.blockerObject.destroy();
+      }
+    }
+    if (runtimeObject.visualObject && runtimeObject.visualObject !== runtimeObject.blockerObject) {
+      runtimeObject.visualObject.destroy();
+    }
+    this.runtimeWorldObjects.delete(id);
+    this.worldObjects = this.worldObjects.filter((object) => object !== runtimeObject.visualObject);
+    this.treeBlockers = this.treeBlockers.filter((object) => object !== runtimeObject.blockerObject);
+  }
+
+  createChunkDebugOverlay() {
+    if (!CHUNK_WORLD_DEBUG) return;
+    this.chunkDebugText = this.add.text(12, 12, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: '#d7ffe0',
+      backgroundColor: '#000000aa'
+    }).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 50).setPadding(6, 4, 6, 4);
+    this.updateChunkDebugOverlay();
+  }
+
+  updateChunkDebugOverlay() {
+    if (!this.chunkDebugText || !this.chunkManager || !this.player) return;
+    const tile = ChunkMath.worldToTile(this.player.x, this.player.y);
+    const chunk = ChunkMath.worldToChunk(this.player.x, this.player.y);
+    this.chunkDebugText.setText([
+      `seed: ${this.worldSeed}`,
+      `tile: ${tile.tileX}, ${tile.tileY}`,
+      `chunk: ${chunk.chunkX}, ${chunk.chunkY}`,
+      `active: ${this.chunkManager.getActiveCount()}`,
+      `pos: ${Math.round(this.player.x)}, ${Math.round(this.player.y)}`,
+      `depth: ${this.player.depth}`,
+      `vis: ${this.player.visible}/${this.player.active}`
+    ].join('\n'));
+  }
+
+  cleanupChunkedWorld() {
+    if (this.chunkWorldCleanupDone) return;
+    this.chunkWorldCleanupDone = true;
+    if (this.chunkManager) {
+      this.chunkManager.destroy();
+      this.chunkManager = null;
+    }
+    if (this.chunkDebugText) {
+      this.chunkDebugText.destroy();
+      this.chunkDebugText = null;
+    }
+    this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.cleanupChunkedWorld, this);
+    this.events.off(Phaser.Scenes.Events.DESTROY, this.cleanupChunkedWorld, this);
+  }
+
+
   createWorld() {
+    if (this.useChunkedWorld) {
+      this.createChunkedWorld();
+      return;
+    }
     this.worldGrid = new WorldGrid(FixedMapData);
     this.physics.world.setBounds(0, 0, this.worldGrid.worldWidth, this.worldGrid.worldHeight);
 
@@ -320,35 +492,40 @@ class GameScene extends Phaser.Scene {
       playerTexture.destroy();
     }
 
-    const { col, row } = FixedMapData.playerStart;
+    let startPosition;
+    if (this.useChunkedWorld) {
+      const spawn = ChunkMath.chunkLocalToWorldTile(0, 0, 8, 8);
+      startPosition = this.worldGrid.cellToWorldCenter(spawn.tileX, spawn.tileY);
+    } else {
+      const { col, row } = FixedMapData.playerStart;
 
-    if (!this.worldGrid.isInside(col, row)) {
-      throw new Error(`Стартовая клетка игрока находится вне карты (col: ${col}, row: ${row}).`);
-    }
+      if (!this.worldGrid.isInside(col, row)) {
+        throw new Error(`Стартовая клетка игрока находится вне карты (col: ${col}, row: ${row}).`);
+      }
 
-    if (!this.worldGrid.isWalkable(col, row)) {
-      const tileType = this.worldGrid.getTileType(col, row);
-      throw new Error(
-        `Стартовая клетка игрока непроходима (col: ${col}, row: ${row}, тип: ${tileType ?? 'неизвестен'}).`
-      );
-    }
+      if (!this.worldGrid.isWalkable(col, row)) {
+        const tileType = this.worldGrid.getTileType(col, row);
+        throw new Error(
+          `Стартовая клетка игрока непроходима (col: ${col}, row: ${row}, тип: ${tileType ?? 'неизвестен'}).`
+        );
+      }
 
-    const startPosition = this.worldGrid.cellToWorldCenter(col, row);
-    if (startPosition === null) {
-      throw new Error(
-        `Не удалось преобразовать стартовую клетку игрока в координаты мира (col: ${col}, row: ${row}).`
-      );
+      startPosition = this.worldGrid.cellToWorldCenter(col, row);
+      if (startPosition === null) {
+        throw new Error(
+          `Не удалось преобразовать стартовую клетку игрока в координаты мира (col: ${col}, row: ${row}).`
+        );
+      }
     }
 
     this.player = this.physics.add.sprite(startPosition.x, startPosition.y, 'player');
-    this.player.setCollideWorldBounds(true);
+    this.player.setCollideWorldBounds(!this.useChunkedWorld);
     this.player.body.setSize(40, 40);
     this.playerMapCollider = this.physics.add.collider(this.player, this.surfaceLayer);
     this.updateWorldDepth(this.player);
   }
 
   createWorldObjects() {
-    this.validateWorldObjects();
     this.createWorldObjectTextures();
     this.createGroundItemTextures();
 
@@ -358,6 +535,13 @@ class GameScene extends Phaser.Scene {
     this.runtimeWorldObjects = new Map();
     this.blockingWorldObjects = this.physics.add.staticGroup();
     this.groundItemSystem = new GroundItemSystem(this, ITEM_TEXTURE_KEYS);
+
+    if (this.useChunkedWorld) {
+      this.createChunkedWorldObjects();
+      return;
+    }
+
+    this.validateWorldObjects();
 
     FixedWorldObjects.forEach((objectData) => {
       const position = this.worldGrid.cellToWorldCenter(objectData.col, objectData.row);
@@ -560,16 +744,18 @@ class GameScene extends Phaser.Scene {
 
   createCreatureSystem() {
     this.creatureSystem = new CreatureSystem(this);
-    SLIME_SPAWN_CELLS.forEach(({ col, row }) => {
-      if (!this.worldGrid.isWalkable(col, row)
-        || Array.from(this.runtimeWorldObjects.values()).some(
-          (object) => object.active && object.col === col && object.row === row
-        )) {
-        throw new Error(`Недопустимая клетка появления слизня (${col}, ${row}).`);
-      }
-      const position = this.worldGrid.cellToWorldCenter(col, row);
-      this.creatureSystem.spawn('SLIME', position.x, position.y, `SLIME_${col}_${row}`);
-    });
+    if (!this.useChunkedWorld) {
+      SLIME_SPAWN_CELLS.forEach(({ col, row }) => {
+        if (!this.worldGrid.isWalkable(col, row)
+          || Array.from(this.runtimeWorldObjects.values()).some(
+            (object) => object.active && object.col === col && object.row === row
+          )) {
+          throw new Error(`Недопустимая клетка появления слизня (${col}, ${row}).`);
+        }
+        const position = this.worldGrid.cellToWorldCenter(col, row);
+        this.creatureSystem.spawn('SLIME', position.x, position.y, `SLIME_${col}_${row}`);
+      });
+    }
     this.creatureMapCollider = this.physics.add.collider(this.creatureSystem.group, this.surfaceLayer);
     this.creatureObstacleCollider = this.physics.add.collider(
       this.creatureSystem.group,
@@ -1360,7 +1546,11 @@ class GameScene extends Phaser.Scene {
 
   createCamera() {
     const camera = this.cameras.main;
-    camera.setBounds(0, 0, this.worldGrid.worldWidth, this.worldGrid.worldHeight);
+    if (this.useChunkedWorld) {
+      camera.removeBounds();
+    } else {
+      camera.setBounds(0, 0, this.worldGrid.worldWidth, this.worldGrid.worldHeight);
+    }
     camera.startFollow(this.player, true, 0.09, 0.09);
     camera.setRoundPixels(true);
   }
@@ -1555,7 +1745,7 @@ class GameScene extends Phaser.Scene {
 
   createSaveState() {
     const stats = this.playerStatsModel.exportState();
-    return { version: 1, savedAt: Date.now(), player: { x: this.player.x, y: this.player.y, ...stats },
+    const state = { version: 1, savedAt: Date.now(), player: { x: this.player.x, y: this.player.y, ...stats },
       dayNight: this.dayNightSystem.exportState(),
       inventory: { activeHotbarIndex: this.inventoryUI.getActiveHotbarIndex(), slots: this.inventoryModel.exportState() },
       world: {
@@ -1563,6 +1753,10 @@ class GameScene extends Phaser.Scene {
         groundItems: this.groundItemSystem.exportState(), walls: this.buildingSystem.exportState(),
         deadCreatureIds: this.creatureSystem.exportState()
       } };
+    if (this.worldSeed !== undefined && this.worldSeed !== null) {
+      state.worldSeed = this.worldSeed;
+    }
+    return state;
   }
 
   prepareForSaveOperation() {
@@ -1621,6 +1815,17 @@ class GameScene extends Phaser.Scene {
 
   findSafePlayerPosition(x, y) {
     if (this.isSavedPositionValid(x, y)) return { x, y };
+    if (this.useChunkedWorld) {
+      if (this.chunkManager) {
+        this.chunkManager.syncAround(x, y);
+      }
+      if (this.isSavedPositionValid(x, y)) return { x, y };
+      const spawn = this.chunkManager
+        ? this.chunkManager.getSpawnWorldPosition()
+        : this.worldGrid.cellToWorldCenter(8, 8);
+      if (spawn && this.isSavedPositionValid(spawn.x, spawn.y)) return spawn;
+      return spawn || { x: 8 * 32 + 16, y: 8 * 32 + 16 };
+    }
     const start = FixedMapData.playerStart;
     const cells = [];
     for (let row = 0; row < this.worldGrid.rows; row += 1) for (let col = 0; col < this.worldGrid.columns; col += 1) {
@@ -1637,14 +1842,29 @@ class GameScene extends Phaser.Scene {
   applySaveState(state) {
     if (!this.inventoryModel.importState(state.inventory.slots)
       || !this.playerStatsModel.importState(state.player)) throw new Error('Ошибка импорта сохранения.');
+    if (state.worldSeed !== undefined && state.worldSeed !== null) {
+      this.worldSeed = state.worldSeed;
+      if (this.chunkManager) this.chunkManager.worldSeed = state.worldSeed;
+    } else if (this.worldSeed === undefined || this.worldSeed === null) {
+      this.worldSeed = this.createNewWorldSeed();
+      if (this.chunkManager) this.chunkManager.worldSeed = this.worldSeed;
+    }
     this.dayNightSystem.importState(state.dayNight);
     this.applyDayNightVisuals(true);
-    this.restoreRemovedWorldObjects(state.world.removedObjectIds);
+    if (!this.useChunkedWorld) {
+      this.restoreRemovedWorldObjects(state.world.removedObjectIds);
+    }
     if (!this.groundItemSystem.restoreState(state.world.groundItems)
-      || !this.buildingSystem.restoreState(state.world.walls)
-      || !this.creatureSystem.restoreState(state.world.deadCreatureIds)) throw new Error('Ошибка импорта сохранения.');
+      || !this.buildingSystem.restoreState(this.useChunkedWorld ? [] : state.world.walls)
+      || !this.creatureSystem.restoreState(this.useChunkedWorld ? [] : state.world.deadCreatureIds)) {
+      throw new Error('Ошибка импорта сохранения.');
+    }
     this.refreshInteractionTargets();
     const position = this.findSafePlayerPosition(state.player.x, state.player.y);
+    if (this.chunkManager) {
+      this.chunkManager.syncAround(position.x, position.y);
+      this.refreshInteractionTargets();
+    }
     this.player.setVisible(true);
     this.player.body.enable = true;
     this.player.setPosition(position.x, position.y); this.player.body.reset(position.x, position.y);
@@ -2495,6 +2715,15 @@ class GameScene extends Phaser.Scene {
 
     this.player.setVelocity(movement.x, movement.y);
     this.updateWorldDepth(this.player);
+    if (this.chunkManager) {
+      const synced = this.chunkManager.syncAround(this.player.x, this.player.y);
+      if (synced) {
+        this.player.setActive(true);
+        this.player.setVisible(true);
+        this.updateWorldDepth(this.player);
+      }
+      this.updateChunkDebugOverlay();
+    }
     this.collectNearbyGroundItems();
     if (this.buildingSystem.isActive()) {
       this.updateBuildingPreview();

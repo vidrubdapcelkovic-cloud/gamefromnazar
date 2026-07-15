@@ -13,6 +13,11 @@ const requiredRelativePaths = [
   'src/data/CreatureCatalog.js',
   'src/data/CombatConfig.js',
   'src/world/WorldGrid.js',
+  'src/world/ChunkMath.js',
+  'src/world/SeededRandom.js',
+  'src/world/ChunkGenerator.js',
+  'src/world/ChunkInstance.js',
+  'src/world/ChunkManager.js',
   'src/systems/InteractionSystem.js',
   'src/systems/HoldActionSystem.js',
   'src/systems/InventoryModel.js',
@@ -66,6 +71,11 @@ const buildCatalog = fs.readFileSync(requireFile('src/data/BuildCatalog.js'), 'u
 const creatureCatalog = fs.readFileSync(requireFile('src/data/CreatureCatalog.js'), 'utf8');
 const combatConfig = fs.readFileSync(requireFile('src/data/CombatConfig.js'), 'utf8');
 const worldGrid = fs.readFileSync(requireFile('src/world/WorldGrid.js'), 'utf8');
+const chunkMath = fs.readFileSync(requireFile('src/world/ChunkMath.js'), 'utf8');
+const seededRandom = fs.readFileSync(requireFile('src/world/SeededRandom.js'), 'utf8');
+const chunkGenerator = fs.readFileSync(requireFile('src/world/ChunkGenerator.js'), 'utf8');
+const chunkInstance = fs.readFileSync(requireFile('src/world/ChunkInstance.js'), 'utf8');
+const chunkManager = fs.readFileSync(requireFile('src/world/ChunkManager.js'), 'utf8');
 const interactionSystem = fs.readFileSync(requireFile('src/systems/InteractionSystem.js'), 'utf8');
 const holdActionSystem = fs.readFileSync(requireFile('src/systems/HoldActionSystem.js'), 'utf8');
 const inventoryModel = fs.readFileSync(requireFile('src/systems/InventoryModel.js'), 'utf8');
@@ -122,6 +132,11 @@ ${safeScript(buildCatalog)}
 ${safeScript(creatureCatalog)}
 ${safeScript(combatConfig)}
 ${safeScript(worldGrid)}
+${safeScript(chunkMath)}
+${safeScript(seededRandom)}
+${safeScript(chunkGenerator)}
+${safeScript(chunkInstance)}
+${safeScript(chunkManager)}
 ${safeScript(interactionSystem)}
 ${safeScript(holdActionSystem)}
 ${safeScript(inventoryModel)}
@@ -169,6 +184,11 @@ const pagesHtml = `<!doctype html>
     <script src="./src/data/CreatureCatalog.js"></script>
     <script src="./src/data/CombatConfig.js"></script>
     <script src="./src/world/WorldGrid.js"></script>
+    <script src="./src/world/ChunkMath.js"></script>
+    <script src="./src/world/SeededRandom.js"></script>
+    <script src="./src/world/ChunkGenerator.js"></script>
+    <script src="./src/world/ChunkInstance.js"></script>
+    <script src="./src/world/ChunkManager.js"></script>
     <script src="./src/systems/InteractionSystem.js"></script>
     <script src="./src/systems/HoldActionSystem.js"></script>
     <script src="./src/systems/InventoryModel.js"></script>
@@ -228,6 +248,11 @@ fs.copyFileSync(requireFile('src/data/BuildCatalog.js'), path.join(docsDataDirec
 fs.copyFileSync(requireFile('src/data/CreatureCatalog.js'), path.join(docsDataDirectory, 'CreatureCatalog.js'));
 fs.copyFileSync(requireFile('src/data/CombatConfig.js'), path.join(docsDataDirectory, 'CombatConfig.js'));
 fs.copyFileSync(requireFile('src/world/WorldGrid.js'), path.join(docsWorldDirectory, 'WorldGrid.js'));
+fs.copyFileSync(requireFile('src/world/ChunkMath.js'), path.join(docsWorldDirectory, 'ChunkMath.js'));
+fs.copyFileSync(requireFile('src/world/SeededRandom.js'), path.join(docsWorldDirectory, 'SeededRandom.js'));
+fs.copyFileSync(requireFile('src/world/ChunkGenerator.js'), path.join(docsWorldDirectory, 'ChunkGenerator.js'));
+fs.copyFileSync(requireFile('src/world/ChunkInstance.js'), path.join(docsWorldDirectory, 'ChunkInstance.js'));
+fs.copyFileSync(requireFile('src/world/ChunkManager.js'), path.join(docsWorldDirectory, 'ChunkManager.js'));
 fs.copyFileSync(requireFile('src/systems/InteractionSystem.js'), path.join(docsSystemsDirectory, 'InteractionSystem.js'));
 fs.copyFileSync(requireFile('src/systems/HoldActionSystem.js'), path.join(docsSystemsDirectory, 'HoldActionSystem.js'));
 fs.copyFileSync(requireFile('src/systems/InventoryModel.js'), path.join(docsSystemsDirectory, 'InventoryModel.js'));

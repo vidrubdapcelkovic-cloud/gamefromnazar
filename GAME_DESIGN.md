@@ -6,7 +6,7 @@
 - Base project: gamefrompchelka
 - Base version: base-game-v1
 - Project type: expanded survival version
-- Current stage: project identity setup
+- Current stage: chunked world stage 1
 
 ## Core concept
 
@@ -86,6 +86,21 @@ The exact list and behaviour must be approved before implementation.
 
 ## Current status
 
-Only project identity is being changed.
+Chunked world Stage 1 is in progress.
 
-Map size, gameplay, balance and characters have not been changed yet.
+Identity isolation is complete. Map streaming uses chunks while FixedMapData remains the fallback. Characters and full persistence are not part of this stage.
+
+## Chunked World — Stage 1
+
+- chunk size: 16 × 16 tiles (512 × 512 px);
+- active radius: 1;
+- simultaneously loaded: up to 3 × 3 chunks;
+- generation is deterministic by world seed;
+- each chunk has walkable grass plus trees and stones;
+- start chunk `(0, 0)` keeps a free 7 × 7 spawn zone;
+- save stores `worldSeed` and player world position;
+- harvested chunk changes are not persisted yet (resources may respawn after unload);
+- building is temporarily disabled in chunked mode;
+- procedural enemies are not spawned in chunked mode;
+- FixedMapData fallback remains available via `USE_CHUNKED_WORLD = false`;
+- next stage candidates: chunk mutation persistence, enemies, buildings/chests, ground-loot ownership.

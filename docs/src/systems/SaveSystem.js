@@ -50,11 +50,27 @@ class SaveSystem {
         }
         return normalized;
       });
-      return { version: 1, savedAt: state.savedAt,
+      let worldSeed;
+      if (state.worldSeed !== undefined && state.worldSeed !== null) {
+        if (typeof state.worldSeed === 'number'
+          && Number.isFinite(state.worldSeed)
+          && Number.isInteger(state.worldSeed)) {
+          worldSeed = state.worldSeed;
+        } else if (typeof state.worldSeed === 'string'
+          && state.worldSeed.length > 0
+          && state.worldSeed.length <= 64) {
+          worldSeed = state.worldSeed;
+        } else {
+          return null;
+        }
+      }
+      const normalized = { version: 1, savedAt: state.savedAt,
         player: { x: p.x, y: p.y, health: p.health, hunger: p.hunger },
         dayNight,
         inventory: { activeHotbarIndex: inv.activeHotbarIndex, slots },
         world: { removedObjectIds, groundItems, walls, deadCreatureIds } };
+      if (worldSeed !== undefined) normalized.worldSeed = worldSeed;
+      return normalized;
     } catch { return null; }
   }
 
