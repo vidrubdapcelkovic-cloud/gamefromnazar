@@ -109,12 +109,23 @@ const samples = [
 ];
 
 samples.forEach((chunk) => {
+  assert(Array.isArray(chunk.npcs), 'chunk always has npcs array');
+  assert(chunk.npcs.length <= 1, 'chunk has at most one npc');
   const occupied = new Set();
   chunk.objects.forEach((object) => {
     assert(object.localTileX >= 0 && object.localTileX <= 15, 'object localX');
     assert(object.localTileY >= 0 && object.localTileY <= 15, 'object localY');
     const key = `${object.localTileX},${object.localTileY}`;
     assert(!occupied.has(key), 'no overlapping blocking objects');
+    occupied.add(key);
+  });
+  chunk.npcs.forEach((npc) => {
+    assertEqual(npc.type, 'RABBIT', 'npc type');
+    assert(Number.isInteger(npc.index) && npc.index >= 0, 'npc index');
+    assert(npc.localTileX >= 0 && npc.localTileX <= 15, 'npc localX');
+    assert(npc.localTileY >= 0 && npc.localTileY <= 15, 'npc localY');
+    const key = `${npc.localTileX},${npc.localTileY}`;
+    assert(!occupied.has(key), 'npc does not overlap TREE/ROCK');
     occupied.add(key);
   });
 });
@@ -126,6 +137,11 @@ start.objects.forEach((object) => {
   const inClear = object.localTileX >= clearMin && object.localTileX <= clearMax
     && object.localTileY >= clearMin && object.localTileY <= clearMax;
   assert(!inClear, 'start clear zone must be free');
+});
+start.npcs.forEach((npc) => {
+  const inClear = npc.localTileX >= clearMin && npc.localTileX <= clearMax
+    && npc.localTileY >= clearMin && npc.localTileY <= clearMax;
+  assert(!inClear, 'start clear zone must be free of npcs');
 });
 assert(start.spawnPoints.length > 0, 'start chunk has spawn');
 assertEqual(start.spawnPoints[0].localTileX, 8, 'spawn localX');

@@ -563,11 +563,34 @@ class ChunkGenerator {
       spawnPoints.push({ localTileX: 8, localTileY: 8 });
     }
 
+    const npcs = [];
+    const npcRng = SeededRandom.fromParts(worldSeed, chunkX, chunkY, 'chunk-npcs');
+    // Keep TREE/ROCK layout unchanged by using a separate stream for NPC chance/placement.
+    if (npcRng.next() < 0.35) {
+      let placedNpc = false;
+      for (let attempt = 0; attempt < 48 && !placedNpc; attempt += 1) {
+        const localX = npcRng.nextInt(0, chunkSize);
+        const localY = npcRng.nextInt(0, chunkSize);
+        const key = `${localX},${localY}`;
+        if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
+        // Current terrain is always walkable grass; still skip occupied resource cells.
+        occupied.add(key);
+        npcs.push({
+          type: 'RABBIT',
+          index: 0,
+          localTileX: localX,
+          localTileY: localY
+        });
+        placedNpc = true;
+      }
+    }
+
     return {
       chunkX,
       chunkY,
       terrain,
       objects,
+      npcs,
       spawnPoints
     };
   }
@@ -578,6 +601,23 @@ function buildChunkResourceId(chunkX, chunkY, type, localTileX, localTileY) {
 
 function shouldMaterializeChunkResource(id, removedIds) {
   return !(removedIds instanceof Set) || !removedIds.has(id);
+}
+
+function buildChunkNpcId(chunkX, chunkY, type, index) {
+  if (!Number.isInteger(chunkX) || !Number.isInteger(chunkY)) {
+    throw new Error('Некорректные координаты чанка для NPC ID.');
+  }
+  if (typeof type !== 'string') {
+    throw new Error('Некорректный тип NPC для ID.');
+  }
+  const normalizedType = type.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '');
+  if (!normalizedType) {
+    throw new Error('Пустой или небезопасный тип NPC для ID.');
+  }
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error('Некорректный индекс NPC для ID.');
+  }
+  return `chunk_${chunkX}_${chunkY}_NPC_${normalizedType}_${index}`;
 }
 
 class ChunkInstance {
@@ -593,8 +633,11 @@ class ChunkInstance {
     this.destroyed = false;
     this.ground = null;
     this.ownedObjectIds = [];
+    this.npcObjects = [];
+    this.npcIds = new Set();
     this.createGround(chunkData);
     this.createObjects(chunkData);
+    this.createNpcs(chunkData);
   }
 
   createGround(chunkData) {
@@ -721,6 +764,76 @@ class ChunkInstance {
     });
   }
 
+  ensureRabbitPlaceholderTexture() {
+    const textureKey = 'rabbit-placeholder';
+    if (!this.scene || !this.scene.textures || this.scene.textures.exists(textureKey)) return;
+    if (!this.scene.make || typeof this.scene.make.graphics !== 'function') return;
+    const graphics = this.scene.make.graphics({ x: 0, y: 0, add: false });
+    graphics.fillStyle(0xd9c3a4, 1);
+    graphics.fillEllipse(14, 18, 20, 14);
+    graphics.fillStyle(0xc9b08a, 1);
+    graphics.fillEllipse(22, 16, 10, 8);
+    graphics.fillStyle(0xb8926c, 1);
+    graphics.fillEllipse(8, 6, 5, 12);
+    graphics.fillEllipse(14, 5, 5, 13);
+    graphics.fillStyle(0x2b2118, 1);
+    graphics.fillCircle(24, 14, 1.5);
+    graphics.fillStyle(0xe8d8c4, 1);
+    graphics.fillCircle(4, 20, 3);
+    graphics.generateTexture(textureKey, 28, 28);
+    graphics.destroy();
+  }
+
+  createNpcs(chunkData) {
+    if (this.destroyed) return;
+    const npcs = Array.isArray(chunkData && chunkData.npcs) ? chunkData.npcs : [];
+    npcs.forEach((descriptor) => {
+      if (!descriptor || descriptor.type !== 'RABBIT') return;
+      if (!Number.isInteger(descriptor.index) || descriptor.index < 0) return;
+      if (!Number.isInteger(descriptor.localTileX) || !Number.isInteger(descriptor.localTileY)) return;
+
+      const npcId = buildChunkNpcId(
+        this.chunkX,
+        this.chunkY,
+        descriptor.type,
+        descriptor.index
+      );
+      if (this.npcIds.has(npcId)) return;
+
+      this.ensureRabbitPlaceholderTexture();
+      const position = ChunkMath.localTileCenterWorld(
+        this.chunkX,
+        this.chunkY,
+        descriptor.localTileX,
+        descriptor.localTileY
+      );
+      // Match TREE visuals: plain image, no physics body.
+      const npcObject = this.scene.add.image(position.x, position.y, 'rabbit-placeholder');
+      npcObject.setDataEnabled();
+      npcObject.setData('npcId', npcId);
+      npcObject.setData('npcType', descriptor.type);
+      npcObject.setData('chunkKey', this.key);
+      if (typeof this.scene.updateWorldDepth === 'function') {
+        this.scene.updateWorldDepth(npcObject);
+      } else {
+        npcObject.setDepth((position.y + npcObject.displayHeight / 2) * 0.1);
+      }
+
+      this.npcIds.add(npcId);
+      this.npcObjects.push(npcObject);
+    });
+  }
+
+  destroyNpcs() {
+    this.npcObjects.slice().forEach((npcObject) => {
+      if (npcObject && typeof npcObject.destroy === 'function') {
+        npcObject.destroy();
+      }
+    });
+    this.npcObjects = [];
+    this.npcIds.clear();
+  }
+
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -732,6 +845,8 @@ class ChunkInstance {
       }
     });
     this.ownedObjectIds = [];
+
+    this.destroyNpcs();
 
     if (this.ground) {
       this.ground.destroy();

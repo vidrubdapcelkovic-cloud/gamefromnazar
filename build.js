@@ -17,6 +17,7 @@ const requiredRelativePaths = [
   'src/world/SeededRandom.js',
   'src/world/ChunkGenerator.js',
   'src/world/ChunkResourceIds.js',
+  'src/world/ChunkNpcIds.js',
   'src/world/ChunkInstance.js',
   'src/world/ChunkManager.js',
   'src/systems/InteractionSystem.js',
@@ -76,6 +77,7 @@ const chunkMath = fs.readFileSync(requireFile('src/world/ChunkMath.js'), 'utf8')
 const seededRandom = fs.readFileSync(requireFile('src/world/SeededRandom.js'), 'utf8');
 const chunkGenerator = fs.readFileSync(requireFile('src/world/ChunkGenerator.js'), 'utf8');
 const chunkResourceIds = fs.readFileSync(requireFile('src/world/ChunkResourceIds.js'), 'utf8');
+const chunkNpcIds = fs.readFileSync(requireFile('src/world/ChunkNpcIds.js'), 'utf8');
 const chunkInstance = fs.readFileSync(requireFile('src/world/ChunkInstance.js'), 'utf8');
 const chunkManager = fs.readFileSync(requireFile('src/world/ChunkManager.js'), 'utf8');
 const interactionSystem = fs.readFileSync(requireFile('src/systems/InteractionSystem.js'), 'utf8');
@@ -138,6 +140,7 @@ ${safeScript(chunkMath)}
 ${safeScript(seededRandom)}
 ${safeScript(chunkGenerator)}
 ${safeScript(chunkResourceIds)}
+${safeScript(chunkNpcIds)}
 ${safeScript(chunkInstance)}
 ${safeScript(chunkManager)}
 ${safeScript(interactionSystem)}
@@ -191,6 +194,7 @@ const pagesHtml = `<!doctype html>
     <script src="./src/world/SeededRandom.js"></script>
     <script src="./src/world/ChunkGenerator.js"></script>
     <script src="./src/world/ChunkResourceIds.js"></script>
+    <script src="./src/world/ChunkNpcIds.js"></script>
     <script src="./src/world/ChunkInstance.js"></script>
     <script src="./src/world/ChunkManager.js"></script>
     <script src="./src/systems/InteractionSystem.js"></script>
@@ -256,6 +260,7 @@ fs.copyFileSync(requireFile('src/world/ChunkMath.js'), path.join(docsWorldDirect
 fs.copyFileSync(requireFile('src/world/SeededRandom.js'), path.join(docsWorldDirectory, 'SeededRandom.js'));
 fs.copyFileSync(requireFile('src/world/ChunkGenerator.js'), path.join(docsWorldDirectory, 'ChunkGenerator.js'));
 fs.copyFileSync(requireFile('src/world/ChunkResourceIds.js'), path.join(docsWorldDirectory, 'ChunkResourceIds.js'));
+fs.copyFileSync(requireFile('src/world/ChunkNpcIds.js'), path.join(docsWorldDirectory, 'ChunkNpcIds.js'));
 fs.copyFileSync(requireFile('src/world/ChunkInstance.js'), path.join(docsWorldDirectory, 'ChunkInstance.js'));
 fs.copyFileSync(requireFile('src/world/ChunkManager.js'), path.join(docsWorldDirectory, 'ChunkManager.js'));
 fs.copyFileSync(requireFile('src/systems/InteractionSystem.js'), path.join(docsSystemsDirectory, 'InteractionSystem.js'));

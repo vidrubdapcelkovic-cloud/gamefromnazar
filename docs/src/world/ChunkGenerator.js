@@ -64,11 +64,34 @@ class ChunkGenerator {
       spawnPoints.push({ localTileX: 8, localTileY: 8 });
     }
 
+    const npcs = [];
+    const npcRng = SeededRandom.fromParts(worldSeed, chunkX, chunkY, 'chunk-npcs');
+    // Keep TREE/ROCK layout unchanged by using a separate stream for NPC chance/placement.
+    if (npcRng.next() < 0.35) {
+      let placedNpc = false;
+      for (let attempt = 0; attempt < 48 && !placedNpc; attempt += 1) {
+        const localX = npcRng.nextInt(0, chunkSize);
+        const localY = npcRng.nextInt(0, chunkSize);
+        const key = `${localX},${localY}`;
+        if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
+        // Current terrain is always walkable grass; still skip occupied resource cells.
+        occupied.add(key);
+        npcs.push({
+          type: 'RABBIT',
+          index: 0,
+          localTileX: localX,
+          localTileY: localY
+        });
+        placedNpc = true;
+      }
+    }
+
     return {
       chunkX,
       chunkY,
       terrain,
       objects,
+      npcs,
       spawnPoints
     };
   }
