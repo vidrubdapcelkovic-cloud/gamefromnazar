@@ -100,7 +100,7 @@ Identity isolation is complete. Map streaming uses chunks while FixedMapData rem
 - start chunk `(0, 0)` keeps a free 7 × 7 spawn zone;
 - save stores `worldSeed` and player world position;
 - harvested chunk changes are not persisted yet (resources may respawn after unload);
-- building is temporarily disabled in chunked mode;
+- building is available in chunked mode with the same recipes/UI; placements are owned by GameScene and are not restored after Continue yet;
 - procedural enemies are not spawned in chunked mode;
 - FixedMapData fallback remains available via `USE_CHUNKED_WORLD = false`;
-- next stage candidates: chunk mutation persistence, enemies, buildings/chests, ground-loot ownership.
+- next stage candidates: chunk mutation persistence (including buildings/chests), enemies, ground-loot ownership.

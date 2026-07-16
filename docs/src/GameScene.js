@@ -113,7 +113,6 @@ class GameScene extends Phaser.Scene {
   }
 
   canBuild() {
-    if (this.useChunkedWorld) return false;
     return !this.isApplyingSave && !this.isPlayerDead() && !this.isModalOpen();
   }
 

@@ -25,11 +25,15 @@
 - Seed: created on new game (Date.now()), stored as optional SaveState worldSeed, restored on continue/load; SAVE does not regenerate it.
 - SaveState decision: VERSION remains 1; worldSeed is optional so old saves stay valid and receive a seed once on load.
 - Fallback: USE_CHUNKED_WORLD in GameScene.js; false keeps FixedMapData path.
-- Stage 1 limits: no chunk mutation persistence; building disabled in chunked mode; no procedural enemies; harvested resources may respawn after unload.
+- Stage 1 limits: no chunk mutation persistence; no procedural enemies; harvested resources may respawn after unload.
+- Building in chunked mode: previously blocked by `GameScene.canBuild()` (`if (this.useChunkedWorld) return false`). That gate is removed. Reused unchanged: BuildCatalog, InputController BUILD UI, BuildingSystem preview/place/cost flow, `blockingWorldObjects` StaticGroup, facing-cell placement.
+- Building coordinates: `ChunkWorldGrid.worldToCell` / `cellToWorldCenter` use `Math.floor(world / tileSize)` and work for negative world positions; no FixedMapData bounds.
+- Building ownership: placements belong to `GameScene` / `BuildingSystem` (ids `building-N`), not to `ChunkInstance`. Chunk unload does not destroy player-built objects.
+- Building persistence: still not restored in chunked mode (`restoreState([])` on load). Save may still export walls via existing SaveState fields, but Continue clears them until a later persistence stage.
 - Visual fix: player/objects used `bottom * 0.1` depth; at negative world Y this fell below terrain Graphics (`-12`), so the player appeared missing. Terrain now uses `ChunkMath.CHUNK_TERRAIN_DEPTH = -1000000`. Entity depth still uses the existing Y-sort formula and stays under UI (`INTERFACE_DEPTH`).
-- Ownership: `ChunkInstance.destroy()` only removes ids prefixed with `chunk_` that it created; player is guarded in unregister.
+- Ownership (chunks): `ChunkInstance.destroy()` only removes ids prefixed with `chunk_` that it created; player is guarded in unregister.
 - Sync order: load missing 3×3 chunks, then unload outsiders; camera follow is not restarted; collideWorldBounds stays off in chunked mode.
-- Save regression was not part of this visual fix.
+- Save-and-exit: `unregisterChunkWorldObject` guards destroyed StaticGroup (`group.children`) before `contains`/`remove`.
 
 Ниже сохранена техническая история и описание базового проекта; при расхождении приоритет у актуального статуса и фактического кода `gamefromnazar`.
 
