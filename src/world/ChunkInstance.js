@@ -7,6 +7,7 @@ class ChunkInstance {
     this.blockingGroup = options.blockingGroup;
     this.onObjectCreated = options.onObjectCreated;
     this.onObjectDestroyed = options.onObjectDestroyed;
+    this.isResourceRemoved = options.isResourceRemoved;
     this.destroyed = false;
     this.ground = null;
     this.ownedObjectIds = [];
@@ -41,6 +42,16 @@ class ChunkInstance {
 
   createObjects(chunkData) {
     chunkData.objects.forEach((objectData) => {
+      const id = buildChunkResourceId(
+        this.chunkX,
+        this.chunkY,
+        objectData.type,
+        objectData.localTileX,
+        objectData.localTileY
+      );
+      if (typeof this.isResourceRemoved === 'function' && this.isResourceRemoved(id)) {
+        return;
+      }
       const worldTile = ChunkMath.chunkLocalToWorldTile(
         this.chunkX,
         this.chunkY,
@@ -53,7 +64,6 @@ class ChunkInstance {
         objectData.localTileX,
         objectData.localTileY
       );
-      const id = `chunk_${this.chunkX}_${this.chunkY}_${objectData.type}_${objectData.localTileX}_${objectData.localTileY}`;
       const textureKey = objectData.type === 'TREE' ? 'temporary-tree' : 'temporary-rock';
       let gameObject;
       let blockerObject = null;
@@ -150,5 +160,6 @@ class ChunkInstance {
     this.blockingGroup = null;
     this.onObjectCreated = null;
     this.onObjectDestroyed = null;
+    this.isResourceRemoved = null;
   }
 }

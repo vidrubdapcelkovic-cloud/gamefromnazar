@@ -219,7 +219,8 @@ class GameScene extends Phaser.Scene {
       blockingGroup: this.blockingWorldObjects,
       onObjectCreated: (runtimeObject) => this.registerChunkWorldObject(runtimeObject),
       onObjectDestroyed: (id) => this.unregisterChunkWorldObject(id),
-      onChunkSetChanged: () => this.refreshInteractionTargets()
+      onChunkSetChanged: () => this.refreshInteractionTargets(),
+      isResourceRemoved: (id) => this.isSessionResourceRemoved(id)
     });
     this.chunkManager.syncAround(this.player.x, this.player.y);
     this.refreshInteractionTargets();
@@ -233,6 +234,39 @@ class GameScene extends Phaser.Scene {
     if (runtimeObject.blockerObject && runtimeObject.blockerObject !== runtimeObject.visualObject) {
       this.treeBlockers.push(runtimeObject.blockerObject);
     }
+  }
+
+  markSessionResourceRemoved(id) {
+    if (typeof id !== 'string' || !id.startsWith('chunk_')) return;
+    this.sessionRemovedResourceIds.add(id);
+  }
+
+  isSessionResourceRemoved(id) {
+    return this.sessionRemovedResourceIds.has(id);
+  }
+
+  hydrateSessionRemovedResourcesFromSave() {
+    if (!this.saveSystem) {
+      this.sessionRemovedResourceIds = new Set();
+      return;
+    }
+    const loaded = this.saveSystem.load();
+    if (!loaded.success || !loaded.state || !loaded.state.world) {
+      this.sessionRemovedResourceIds = new Set();
+      return;
+    }
+    this.applySessionRemovedResources(loaded.state.world.removedResources);
+  }
+
+  applySessionRemovedResources(removedResources) {
+    const normalized = SaveSystem.normalizeRemovedResources(removedResources);
+    this.sessionRemovedResourceIds = new Set(normalized);
+    if (!this.runtimeWorldObjects) return;
+    normalized.forEach((id) => {
+      if (this.runtimeWorldObjects.has(id)) {
+        this.unregisterChunkWorldObject(id);
+      }
+    });
   }
 
   unregisterChunkWorldObject(id) {
@@ -535,6 +569,11 @@ class GameScene extends Phaser.Scene {
     this.treeBlockers = [];
     this.interactionTargets = [];
     this.runtimeWorldObjects = new Map();
+    this.sessionRemovedResourceIds = new Set();
+    // Continue must hydrate removed IDs before the first chunk materialization.
+    if (this.launchMode === 'continue') {
+      this.hydrateSessionRemovedResourcesFromSave();
+    }
     this.blockingWorldObjects = this.physics.add.staticGroup();
     this.groundItemSystem = new GroundItemSystem(this, ITEM_TEXTURE_KEYS);
 
@@ -1295,11 +1334,18 @@ class GameScene extends Phaser.Scene {
     this.targetMarker.setVisible(false);
     this.hideHoldProgress();
 
-    this.setRuntimeWorldObjectActive(runtimeObject, false);
-
     const drop = WORLD_OBJECT_DROPS[runtimeObject.type];
     this.groundItemSystem.spawn(drop.itemType, drop.quantity, position.x, position.y);
     this.showInteractionMessage(`${drop.itemType} ×${drop.quantity}`);
+
+    if (this.useChunkedWorld) {
+      this.markSessionResourceRemoved(runtimeObject.id);
+      this.unregisterChunkWorldObject(runtimeObject.id);
+      this.refreshInteractionTargets();
+      return;
+    }
+
+    this.setRuntimeWorldObjectActive(runtimeObject, false);
   }
 
   getCampfireRecipe() {
@@ -1753,7 +1799,10 @@ class GameScene extends Phaser.Scene {
       world: {
         removedObjectIds: Array.from(this.runtimeWorldObjects.values()).filter((o) => !o.active).map((o) => o.id),
         groundItems: this.groundItemSystem.exportState(), walls: this.buildingSystem.exportState(),
-        deadCreatureIds: this.creatureSystem.exportState()
+        deadCreatureIds: this.creatureSystem.exportState(),
+        removedResources: SaveSystem.normalizeRemovedResources(
+          Array.from(this.sessionRemovedResourceIds || [])
+        )
       } };
     if (this.worldSeed !== undefined && this.worldSeed !== null) {
       state.worldSeed = this.worldSeed;
@@ -1851,6 +1900,7 @@ class GameScene extends Phaser.Scene {
       this.worldSeed = this.createNewWorldSeed();
       if (this.chunkManager) this.chunkManager.worldSeed = this.worldSeed;
     }
+    this.applySessionRemovedResources(state.world && state.world.removedResources);
     this.dayNightSystem.importState(state.dayNight);
     this.applyDayNightVisuals(true);
     if (!this.useChunkedWorld) {

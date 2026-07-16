@@ -572,6 +572,14 @@ class ChunkGenerator {
     };
   }
 }
+function buildChunkResourceId(chunkX, chunkY, type, localTileX, localTileY) {
+  return `chunk_${chunkX}_${chunkY}_${type}_${localTileX}_${localTileY}`;
+}
+
+function shouldMaterializeChunkResource(id, removedIds) {
+  return !(removedIds instanceof Set) || !removedIds.has(id);
+}
+
 class ChunkInstance {
   constructor(scene, chunkData, options) {
     this.scene = scene;
@@ -581,6 +589,7 @@ class ChunkInstance {
     this.blockingGroup = options.blockingGroup;
     this.onObjectCreated = options.onObjectCreated;
     this.onObjectDestroyed = options.onObjectDestroyed;
+    this.isResourceRemoved = options.isResourceRemoved;
     this.destroyed = false;
     this.ground = null;
     this.ownedObjectIds = [];
@@ -615,6 +624,16 @@ class ChunkInstance {
 
   createObjects(chunkData) {
     chunkData.objects.forEach((objectData) => {
+      const id = buildChunkResourceId(
+        this.chunkX,
+        this.chunkY,
+        objectData.type,
+        objectData.localTileX,
+        objectData.localTileY
+      );
+      if (typeof this.isResourceRemoved === 'function' && this.isResourceRemoved(id)) {
+        return;
+      }
       const worldTile = ChunkMath.chunkLocalToWorldTile(
         this.chunkX,
         this.chunkY,
@@ -627,7 +646,6 @@ class ChunkInstance {
         objectData.localTileX,
         objectData.localTileY
       );
-      const id = `chunk_${this.chunkX}_${this.chunkY}_${objectData.type}_${objectData.localTileX}_${objectData.localTileY}`;
       const textureKey = objectData.type === 'TREE' ? 'temporary-tree' : 'temporary-rock';
       let gameObject;
       let blockerObject = null;
@@ -724,8 +742,10 @@ class ChunkInstance {
     this.blockingGroup = null;
     this.onObjectCreated = null;
     this.onObjectDestroyed = null;
+    this.isResourceRemoved = null;
   }
 }
+
 class ChunkWorldGrid {
   constructor(tileSize = ChunkMath.TILE_SIZE) {
     this.tileSize = tileSize;
@@ -772,6 +792,9 @@ class ChunkManager {
     this.onObjectCreated = options.onObjectCreated;
     this.onObjectDestroyed = options.onObjectDestroyed;
     this.onChunkSetChanged = options.onChunkSetChanged;
+    this.isResourceRemoved = typeof options.isResourceRemoved === 'function'
+      ? options.isResourceRemoved
+      : null;
     this.activeRadius = Number.isInteger(options.activeRadius) ? options.activeRadius : 1;
     this.chunks = new Map();
     this.centerChunkX = null;
@@ -815,7 +838,8 @@ class ChunkManager {
       const instance = new ChunkInstance(this.scene, data, {
         blockingGroup: this.blockingGroup,
         onObjectCreated: this.onObjectCreated,
-        onObjectDestroyed: this.onObjectDestroyed
+        onObjectDestroyed: this.onObjectDestroyed,
+        isResourceRemoved: this.isResourceRemoved
       });
       this.chunks.set(key, instance);
     });
@@ -853,8 +877,10 @@ class ChunkManager {
     this.onObjectCreated = null;
     this.onObjectDestroyed = null;
     this.onChunkSetChanged = null;
+    this.isResourceRemoved = null;
   }
 }
+
 class InteractionSystem {
   constructor(radius = 72) {
     this.radius = radius;
@@ -2165,6 +2191,19 @@ class SaveSystem {
     this.slotId = slotManager && slotManager.isValidSlotId(slotId) ? slotId : null;
   }
 
+  static normalizeRemovedResources(value) {
+    if (!Array.isArray(value)) return [];
+    const unique = [];
+    const seen = new Set();
+    value.forEach((entry) => {
+      if (typeof entry !== 'string' || entry.length === 0 || seen.has(entry)) return;
+      seen.add(entry);
+      unique.push(entry);
+    });
+    unique.sort();
+    return unique;
+  }
+
   static normalizeState(state) {
     try {
       if (!state || state.version !== VERSION || !Number.isFinite(state.savedAt)) return null;
@@ -2210,6 +2249,7 @@ class SaveSystem {
         }
         return normalized;
       });
+      const removedResources = SaveSystem.normalizeRemovedResources(w.removedResources);
       let worldSeed;
       if (state.worldSeed !== undefined && state.worldSeed !== null) {
         if (typeof state.worldSeed === 'number'
@@ -2228,7 +2268,7 @@ class SaveSystem {
         player: { x: p.x, y: p.y, health: p.health, hunger: p.hunger },
         dayNight,
         inventory: { activeHotbarIndex: inv.activeHotbarIndex, slots },
-        world: { removedObjectIds, groundItems, walls, deadCreatureIds } };
+        world: { removedObjectIds, groundItems, walls, deadCreatureIds, removedResources } };
       if (worldSeed !== undefined) normalized.worldSeed = worldSeed;
       return normalized;
     } catch { return null; }
@@ -4809,7 +4849,8 @@ class GameScene extends Phaser.Scene {
       blockingGroup: this.blockingWorldObjects,
       onObjectCreated: (runtimeObject) => this.registerChunkWorldObject(runtimeObject),
       onObjectDestroyed: (id) => this.unregisterChunkWorldObject(id),
-      onChunkSetChanged: () => this.refreshInteractionTargets()
+      onChunkSetChanged: () => this.refreshInteractionTargets(),
+      isResourceRemoved: (id) => this.isSessionResourceRemoved(id)
     });
     this.chunkManager.syncAround(this.player.x, this.player.y);
     this.refreshInteractionTargets();
@@ -4823,6 +4864,39 @@ class GameScene extends Phaser.Scene {
     if (runtimeObject.blockerObject && runtimeObject.blockerObject !== runtimeObject.visualObject) {
       this.treeBlockers.push(runtimeObject.blockerObject);
     }
+  }
+
+  markSessionResourceRemoved(id) {
+    if (typeof id !== 'string' || !id.startsWith('chunk_')) return;
+    this.sessionRemovedResourceIds.add(id);
+  }
+
+  isSessionResourceRemoved(id) {
+    return this.sessionRemovedResourceIds.has(id);
+  }
+
+  hydrateSessionRemovedResourcesFromSave() {
+    if (!this.saveSystem) {
+      this.sessionRemovedResourceIds = new Set();
+      return;
+    }
+    const loaded = this.saveSystem.load();
+    if (!loaded.success || !loaded.state || !loaded.state.world) {
+      this.sessionRemovedResourceIds = new Set();
+      return;
+    }
+    this.applySessionRemovedResources(loaded.state.world.removedResources);
+  }
+
+  applySessionRemovedResources(removedResources) {
+    const normalized = SaveSystem.normalizeRemovedResources(removedResources);
+    this.sessionRemovedResourceIds = new Set(normalized);
+    if (!this.runtimeWorldObjects) return;
+    normalized.forEach((id) => {
+      if (this.runtimeWorldObjects.has(id)) {
+        this.unregisterChunkWorldObject(id);
+      }
+    });
   }
 
   unregisterChunkWorldObject(id) {
@@ -5125,6 +5199,11 @@ class GameScene extends Phaser.Scene {
     this.treeBlockers = [];
     this.interactionTargets = [];
     this.runtimeWorldObjects = new Map();
+    this.sessionRemovedResourceIds = new Set();
+    // Continue must hydrate removed IDs before the first chunk materialization.
+    if (this.launchMode === 'continue') {
+      this.hydrateSessionRemovedResourcesFromSave();
+    }
     this.blockingWorldObjects = this.physics.add.staticGroup();
     this.groundItemSystem = new GroundItemSystem(this, ITEM_TEXTURE_KEYS);
 
@@ -5885,11 +5964,18 @@ class GameScene extends Phaser.Scene {
     this.targetMarker.setVisible(false);
     this.hideHoldProgress();
 
-    this.setRuntimeWorldObjectActive(runtimeObject, false);
-
     const drop = WORLD_OBJECT_DROPS[runtimeObject.type];
     this.groundItemSystem.spawn(drop.itemType, drop.quantity, position.x, position.y);
     this.showInteractionMessage(`${drop.itemType} ×${drop.quantity}`);
+
+    if (this.useChunkedWorld) {
+      this.markSessionResourceRemoved(runtimeObject.id);
+      this.unregisterChunkWorldObject(runtimeObject.id);
+      this.refreshInteractionTargets();
+      return;
+    }
+
+    this.setRuntimeWorldObjectActive(runtimeObject, false);
   }
 
   getCampfireRecipe() {
@@ -6343,7 +6429,10 @@ class GameScene extends Phaser.Scene {
       world: {
         removedObjectIds: Array.from(this.runtimeWorldObjects.values()).filter((o) => !o.active).map((o) => o.id),
         groundItems: this.groundItemSystem.exportState(), walls: this.buildingSystem.exportState(),
-        deadCreatureIds: this.creatureSystem.exportState()
+        deadCreatureIds: this.creatureSystem.exportState(),
+        removedResources: SaveSystem.normalizeRemovedResources(
+          Array.from(this.sessionRemovedResourceIds || [])
+        )
       } };
     if (this.worldSeed !== undefined && this.worldSeed !== null) {
       state.worldSeed = this.worldSeed;
@@ -6441,6 +6530,7 @@ class GameScene extends Phaser.Scene {
       this.worldSeed = this.createNewWorldSeed();
       if (this.chunkManager) this.chunkManager.worldSeed = this.worldSeed;
     }
+    this.applySessionRemovedResources(state.world && state.world.removedResources);
     this.dayNightSystem.importState(state.dayNight);
     this.applyDayNightVisuals(true);
     if (!this.useChunkedWorld) {

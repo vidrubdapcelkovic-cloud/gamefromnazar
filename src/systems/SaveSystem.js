@@ -6,6 +6,19 @@ class SaveSystem {
     this.slotId = slotManager && slotManager.isValidSlotId(slotId) ? slotId : null;
   }
 
+  static normalizeRemovedResources(value) {
+    if (!Array.isArray(value)) return [];
+    const unique = [];
+    const seen = new Set();
+    value.forEach((entry) => {
+      if (typeof entry !== 'string' || entry.length === 0 || seen.has(entry)) return;
+      seen.add(entry);
+      unique.push(entry);
+    });
+    unique.sort();
+    return unique;
+  }
+
   static normalizeState(state) {
     try {
       if (!state || state.version !== VERSION || !Number.isFinite(state.savedAt)) return null;
@@ -51,6 +64,7 @@ class SaveSystem {
         }
         return normalized;
       });
+      const removedResources = SaveSystem.normalizeRemovedResources(w.removedResources);
       let worldSeed;
       if (state.worldSeed !== undefined && state.worldSeed !== null) {
         if (typeof state.worldSeed === 'number'
@@ -69,7 +83,7 @@ class SaveSystem {
         player: { x: p.x, y: p.y, health: p.health, hunger: p.hunger },
         dayNight,
         inventory: { activeHotbarIndex: inv.activeHotbarIndex, slots },
-        world: { removedObjectIds, groundItems, walls, deadCreatureIds } };
+        world: { removedObjectIds, groundItems, walls, deadCreatureIds, removedResources } };
       if (worldSeed !== undefined) normalized.worldSeed = worldSeed;
       return normalized;
     } catch { return null; }

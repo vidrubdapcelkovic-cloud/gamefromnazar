@@ -44,6 +44,9 @@ class ChunkManager {
     this.onObjectCreated = options.onObjectCreated;
     this.onObjectDestroyed = options.onObjectDestroyed;
     this.onChunkSetChanged = options.onChunkSetChanged;
+    this.isResourceRemoved = typeof options.isResourceRemoved === 'function'
+      ? options.isResourceRemoved
+      : null;
     this.activeRadius = Number.isInteger(options.activeRadius) ? options.activeRadius : 1;
     this.chunks = new Map();
     this.centerChunkX = null;
@@ -87,7 +90,8 @@ class ChunkManager {
       const instance = new ChunkInstance(this.scene, data, {
         blockingGroup: this.blockingGroup,
         onObjectCreated: this.onObjectCreated,
-        onObjectDestroyed: this.onObjectDestroyed
+        onObjectDestroyed: this.onObjectDestroyed,
+        isResourceRemoved: this.isResourceRemoved
       });
       this.chunks.set(key, instance);
     });
@@ -125,5 +129,6 @@ class ChunkManager {
     this.onObjectCreated = null;
     this.onObjectDestroyed = null;
     this.onChunkSetChanged = null;
+    this.isResourceRemoved = null;
   }
 }

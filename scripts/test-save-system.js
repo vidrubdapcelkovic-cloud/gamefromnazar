@@ -123,4 +123,88 @@ expectInvalid(chunkedState([createWall(Number.POSITIVE_INFINITY, 0)]));
 expectInvalid(createBaseState({ world: { ...createBaseState().world, walls: [createWall(-1, -1)] } }));
 expectInvalid(createBaseState({ world: { ...createBaseState().world, walls: [createWall(100000, 0)] } }));
 
+// removedResources normalization
+function normalizedRemoved(overrides = {}) {
+  const state = createBaseState(overrides);
+  const normalized = SaveSystem.normalizeState(state);
+  assert(normalized !== null, 'expected valid save for removedResources');
+  return normalized.world.removedResources;
+}
+
+assertEqual(
+  JSON.stringify(normalizedRemoved()),
+  '[]',
+  'missing removedResources becomes []'
+);
+assertEqual(
+  JSON.stringify(normalizedRemoved({
+    world: { ...createBaseState().world, removedResources: null }
+  })),
+  '[]',
+  'non-array removedResources becomes []'
+);
+assertEqual(
+  JSON.stringify(normalizedRemoved({
+    world: { ...createBaseState().world, removedResources: 'bad' }
+  })),
+  '[]',
+  'string removedResources becomes []'
+);
+
+const oneId = 'chunk_0_0_TREE_3_4';
+assertEqual(
+  JSON.stringify(normalizedRemoved({
+    world: { ...createBaseState().world, removedResources: [oneId] }
+  })),
+  JSON.stringify([oneId]),
+  'single removed resource id preserved'
+);
+
+const many = [
+  'chunk_1_0_ROCK_2_2',
+  'chunk_0_0_TREE_3_4',
+  'chunk_-1_2_ROCK_11_7'
+];
+assertEqual(
+  JSON.stringify(normalizedRemoved({
+    world: { ...createBaseState().world, removedResources: many }
+  })),
+  JSON.stringify([...many].sort()),
+  'multiple ids are sorted'
+);
+
+assertEqual(
+  JSON.stringify(normalizedRemoved({
+    world: {
+      ...createBaseState().world,
+      removedResources: [oneId, oneId, 'chunk_0_0_TREE_3_4']
+    }
+  })),
+  JSON.stringify([oneId]),
+  'duplicates removed'
+);
+
+assertEqual(
+  JSON.stringify(normalizedRemoved({
+    world: {
+      ...createBaseState().world,
+      removedResources: [oneId, '', null, 12, 'chunk_-3_-4_TREE_1_2']
+    }
+  })),
+  JSON.stringify(['chunk_-3_-4_TREE_1_2', oneId].sort()),
+  'empty/non-string values dropped; negatives kept'
+);
+
+assertEqual(
+  JSON.stringify(SaveSystem.normalizeRemovedResources([
+    'chunk_2_0_TREE_1_1',
+    'chunk_0_0_TREE_1_1',
+    'chunk_0_0_TREE_1_1',
+    '',
+    5
+  ])),
+  JSON.stringify(['chunk_0_0_TREE_1_1', 'chunk_2_0_TREE_1_1']),
+  'normalizeRemovedResources helper sorts and filters'
+);
+
 console.log('test-save-system: ok');
