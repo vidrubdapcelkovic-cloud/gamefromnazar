@@ -2215,16 +2215,69 @@ class GameScene extends Phaser.Scene {
       return true;
     }
 
-    const target = this.creatureSystem.getNearestAttackable(
+    const creatureTarget = this.creatureSystem.getNearestAttackable(
       this.player.x, this.player.y, PLAYER_MELEE_ATTACK.radius
     );
-    if (!target) return true;
-    const deathX = target.sprite.x;
-    const deathY = target.sprite.y;
+    const npcTarget = this.findNearestAttackableNpc(
+      this.player.x, this.player.y, PLAYER_MELEE_ATTACK.radius
+    );
+    if (!creatureTarget && !npcTarget) return true;
+
+    const creatureDistanceSquared = creatureTarget
+      ? ((creatureTarget.sprite.x - this.player.x) ** 2)
+        + ((creatureTarget.sprite.y - this.player.y) ** 2)
+      : Number.POSITIVE_INFINITY;
+    const preferNpc = npcTarget
+      && (
+        !creatureTarget
+        || npcTarget.distanceSquared < creatureDistanceSquared
+        || (
+          npcTarget.distanceSquared === creatureDistanceSquared
+          && String(npcTarget.npcObject.getData('npcId') || '')
+            < String(creatureTarget.id || '')
+        )
+      );
+
     const actualDamage = this.getPlayerAttackDamage();
-    const result = this.creatureSystem.damage(target.id, actualDamage);
-    this.handleCreatureDamageResult(target, result, deathX, deathY);
+    if (preferNpc) {
+      npcTarget.instance.applyNpcDamage(npcTarget.npcObject, actualDamage);
+      return true;
+    }
+
+    const deathX = creatureTarget.sprite.x;
+    const deathY = creatureTarget.sprite.y;
+    const result = this.creatureSystem.damage(creatureTarget.id, actualDamage);
+    this.handleCreatureDamageResult(creatureTarget, result, deathX, deathY);
     return true;
+  }
+
+  findNearestAttackableNpc(x, y, radius) {
+    if (!this.useChunkedWorld || !this.chunkManager || !this.chunkManager.chunks) return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius < 0) {
+      return null;
+    }
+
+    let nearest = null;
+    this.chunkManager.chunks.forEach((instance) => {
+      if (!instance || typeof instance.getNearestAttackableNpc !== 'function') return;
+      const npcObject = instance.getNearestAttackableNpc(x, y, radius);
+      if (!npcObject) return;
+      const dx = npcObject.x - x;
+      const dy = npcObject.y - y;
+      const distanceSquared = dx * dx + dy * dy;
+      if (
+        !nearest
+        || distanceSquared < nearest.distanceSquared
+        || (
+          distanceSquared === nearest.distanceSquared
+          && String(npcObject.getData('npcId') || '')
+            < String(nearest.npcObject.getData('npcId') || '')
+        )
+      ) {
+        nearest = { instance, npcObject, distanceSquared };
+      }
+    });
+    return nearest;
   }
 
   handleProjectileCreatureHit(projectile, creatureSprite) {

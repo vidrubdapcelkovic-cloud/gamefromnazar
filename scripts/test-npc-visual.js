@@ -14,6 +14,17 @@ function assertEqual(actual, expected, message) {
   }
 }
 
+function assertThrows(fn, message) {
+  let threw = false;
+  try {
+    fn();
+  } catch (error) {
+    threw = true;
+    assert(error instanceof Error, `${message}: expected Error`);
+  }
+  assert(threw, `${message}: expected throw`);
+}
+
 function createImageMock(x, y, textureKey) {
   const data = {};
   return {
@@ -593,6 +604,155 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
   withoutNpc.instance.destroy();
   assertEqual(withNpc.destroyed.length, 1, 'tree unload callback still fires');
   assertEqual(withoutNpc.destroyed.length, 1, 'tree unload callback fires without npc');
+}
+
+// HP / damage / death lifecycle
+{
+  resetWanderCalls();
+  const descriptor = {
+    type: 'RABBIT',
+    index: 0,
+    localTileX: 5,
+    localTileY: 5
+  };
+  const descriptorSnapshot = JSON.stringify(descriptor);
+  const treeDescriptor = {
+    type: 'TREE',
+    localTileX: 2,
+    localTileY: 3,
+    variant: 0
+  };
+  const chunkData = createChunkData({
+    objects: [treeDescriptor],
+    npcs: [descriptor]
+  });
+  const chunkDataSnapshot = JSON.stringify(chunkData);
+  const { instance, scene, created } = createInstance(chunkData);
+  const npcObject = instance.npcObjects[0];
+  const player = scene.player;
+  const npcId = npcObject.getData('npcId');
+  const collider = npcObject._npcPlayerCollider;
+  const firstTween = scene.tweensList[0];
+  const startStep = npcObject.getData('wanderStepIndex');
+  const plansAtStart = getWanderCallCount();
+
+  assertEqual(npcObject.getData('maxHp'), 3, 'maxHp = 3');
+  assertEqual(npcObject.getData('hp'), 3, 'hp = 3');
+  assertEqual(npcObject.getData('dead'), false, 'dead = false');
+  assertEqual(collider.callback, null, 'player collider has no damage callback');
+
+  const hit = instance.getNearestAttackableNpc(npcObject.x, npcObject.y, 52);
+  assertEqual(hit, npcObject, 'attack range finds rabbit');
+  assertEqual(
+    instance.getNearestAttackableNpc(npcObject.x + 200, npcObject.y, 52),
+    null,
+    'out of range returns null'
+  );
+
+  // Attack hit applies existing damage value (default melee 10 clamps to remaining HP).
+  const first = instance.applyNpcDamage(npcObject, 1);
+  assertEqual(first.damage, 1, 'damage 1 applied');
+  assertEqual(first.health, 2, 'hp 3 → 2');
+  assertEqual(first.died, false, 'still alive after 1');
+  assertEqual(npcObject.getData('hp'), 2, 'stored hp is 2');
+  assertEqual(npcObject.getData('dead'), false, 'not dead yet');
+  assertEqual(getWanderCallCount(), plansAtStart, 'damage does not start extra wander cycle');
+  assertEqual(npcObject.getData('wanderStepIndex'), startStep, 'damage does not change stepIndex');
+  assertEqual(JSON.stringify(descriptor), descriptorSnapshot, 'descriptor unchanged by damage');
+  assertEqual(JSON.stringify(chunkData), chunkDataSnapshot, 'chunkData unchanged by damage');
+
+  const second = instance.applyNpcDamage(npcObject, 1);
+  assertEqual(second.health, 1, 'next damage uses current hp');
+
+  assertThrows(() => instance.applyNpcDamage(npcObject, 0), 'invalid damage 0 throws');
+  assertThrows(() => instance.applyNpcDamage(npcObject, -1), 'invalid damage negative throws');
+  assertThrows(() => instance.applyNpcDamage(npcObject, Number.NaN), 'invalid damage NaN throws');
+  assertEqual(npcObject.getData('hp'), 1, 'invalid damage does not change hp');
+
+  const lethal = instance.applyNpcDamage(npcObject, 10);
+  assertEqual(lethal.damage, 1, 'large damage clamped to remaining hp');
+  assertEqual(lethal.health, 0, 'hp becomes 0');
+  assertEqual(lethal.died, true, 'death triggered once');
+  assertEqual(npcObject.getData('hp'), 0, 'hp stored as 0');
+  assertEqual(npcObject.getData('dead'), true, 'dead true');
+  assert(npcObject.getData('hp') >= 0, 'hp never negative');
+
+  assertEqual(firstTween.stopped, true, 'death stops active tween');
+  assertEqual(collider.destroyed, true, 'death destroys collider');
+  assertEqual(npcObject._npcWanderTween, null, 'tween ref cleared');
+  assertEqual(npcObject._npcWanderTimer, null, 'timer ref cleared');
+  assertEqual(npcObject._npcPlayerCollider, null, 'collider ref cleared');
+  assertEqual(npcObject.destroyed, true, 'visual destroyed');
+  assertEqual(npcObject.body, null, 'body gone with visual');
+  assertEqual(instance.npcObjects.length, 0, 'removed from npcObjects');
+  assertEqual(instance.npcIds.has(npcId), false, 'npcId removed from npcIds');
+  assertEqual(player.destroyed, false, 'player not destroyed');
+  assertEqual(created.length, 1, 'TREE lifecycle unchanged');
+  assertEqual(created[0].type, 'TREE', 'TREE still present');
+
+  const afterDead = instance.applyNpcDamage(npcObject, 1);
+  assertEqual(afterDead.damage, 0, 'damage after dead ignored');
+  assertEqual(afterDead.died, false, 'no second death');
+  assertEqual(instance.killNpc(npcObject), false, 'repeat killNpc safe');
+
+  const plansAfterDeath = getWanderCallCount();
+  const tweensAfterDeath = scene.tweensList.length;
+  const timersAfterDeath = scene.timersList.length;
+  firstTween.complete();
+  assertEqual(getWanderCallCount(), plansAfterDeath, 'dead tween callback does not replan');
+  assertEqual(scene.tweensList.length, tweensAfterDeath, 'dead tween callback creates no tween');
+  assertEqual(scene.timersList.length, timersAfterDeath, 'dead tween callback creates no timer');
+
+  instance.destroy();
+  assertEqual(instance.npcObjects.length, 0, 'destroy after death safe');
+}
+
+// Damage after ChunkInstance.destroy ignored; unload living NPC is not death
+{
+  resetWanderCalls();
+  const { instance, scene } = createInstance(createChunkData({
+    npcs: [{ type: 'RABBIT', index: 0, localTileX: 4, localTileY: 4 }]
+  }));
+  const npcObject = instance.npcObjects[0];
+  assertEqual(npcObject.getData('dead'), false, 'alive before unload');
+  assertEqual(npcObject.getData('hp'), 3, 'full hp before unload');
+  instance.destroy();
+  assertEqual(npcObject.destroyed, true, 'unload destroys visual');
+  assertEqual(npcObject.getData('dead'), false, 'unload is not death flow');
+  const afterUnload = instance.applyNpcDamage(npcObject, 1);
+  assertEqual(afterUnload.damage, 0, 'damage after destroy ignored');
+  assertEqual(afterUnload.died, false, 'no death after destroy');
+  assertEqual(scene.player.destroyed, false, 'player survives unload');
+}
+
+// GameScene melee attack hook reaches applyNpcDamage, not creature loot path
+{
+  const gameSceneSource = fs.readFileSync(path.join(root, 'src/GameScene.js'), 'utf8');
+  assert(
+    /findNearestAttackableNpc\s*\(/.test(gameSceneSource),
+    'GameScene finds attackable NPCs'
+  );
+  assert(
+    /applyNpcDamage\s*\(/.test(gameSceneSource),
+    'GameScene melee path calls applyNpcDamage'
+  );
+  assert(
+    !/handleCreatureDamageResult\s*\(\s*npcTarget/.test(gameSceneSource),
+    'NPC hits do not go through creature loot handler'
+  );
+  const chunkInstanceSource = fs.readFileSync(path.join(root, 'src/world/ChunkInstance.js'), 'utf8');
+  const colliderSetup = chunkInstanceSource.match(
+    /setupNpcPlayerCollider\([\s\S]*?\n  [a-zA-Z]/
+  );
+  assert(colliderSetup, 'setupNpcPlayerCollider found');
+  assert(
+    !/applyNpcDamage/.test(colliderSetup[0]),
+    'collider setup does not wire damage callback'
+  );
+  assert(
+    /physics\.add\.collider\(npcObject, player\)/.test(colliderSetup[0]),
+    'collider is created without callback args'
+  );
 }
 
 console.log('test-npc-visual: ok');

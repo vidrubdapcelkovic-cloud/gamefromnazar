@@ -178,6 +178,7 @@ class ChunkInstance {
     return !this.destroyed
       && !!npcObject
       && !npcObject.destroyed
+      && !npcObject.getData('dead')
       && this.npcObjects.includes(npcObject)
       && !npcObject.getData('wanderStopped');
   }
@@ -271,6 +272,97 @@ class ChunkInstance {
     if (!player || !player.body) return;
 
     npcObject._npcPlayerCollider = this.scene.physics.add.collider(npcObject, player);
+  }
+
+  getNearestAttackableNpc(x, y, radius) {
+    if (this.destroyed) return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius < 0) {
+      return null;
+    }
+
+    const radiusSquared = radius * radius;
+    let nearest = null;
+    let nearestDistanceSquared = Infinity;
+
+    this.npcObjects.forEach((npcObject) => {
+      if (!npcObject || npcObject.destroyed || npcObject.getData('dead')) return;
+      if (npcObject.getData('npcType') !== 'RABBIT') return;
+
+      const dx = npcObject.x - x;
+      const dy = npcObject.y - y;
+      const distanceSquared = dx * dx + dy * dy;
+      if (distanceSquared > radiusSquared) return;
+
+      const npcId = String(npcObject.getData('npcId') || '');
+      const nearestId = nearest ? String(nearest.getData('npcId') || '') : '';
+      if (
+        distanceSquared < nearestDistanceSquared
+        || (distanceSquared === nearestDistanceSquared && npcId < nearestId)
+      ) {
+        nearest = npcObject;
+        nearestDistanceSquared = distanceSquared;
+      }
+    });
+
+    return nearest;
+  }
+
+  applyNpcDamage(npcObject, amount) {
+    if (this.destroyed) {
+      return { damage: 0, health: 0, died: false };
+    }
+    if (!npcObject || !this.npcObjects.includes(npcObject)) {
+      const leftover = npcObject && typeof npcObject.getData === 'function'
+        ? Math.max(0, npcObject.getData('hp') || 0)
+        : 0;
+      return { damage: 0, health: leftover, died: false };
+    }
+    if (npcObject.getData('npcType') !== 'RABBIT') {
+      return { damage: 0, health: 0, died: false };
+    }
+    if (npcObject.destroyed || npcObject.getData('dead')) {
+      return { damage: 0, health: 0, died: false };
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error(`Некорректный урон NPC: ${amount}.`);
+    }
+
+    const currentHp = Number.isInteger(npcObject.getData('hp')) ? npcObject.getData('hp') : 0;
+    const actualDamage = Math.min(amount, Math.max(0, currentHp));
+    const nextHp = Math.max(0, currentHp - actualDamage);
+    npcObject.setData('hp', nextHp);
+
+    if (nextHp === 0) {
+      this.killNpc(npcObject);
+      return { damage: actualDamage, health: 0, died: true };
+    }
+
+    return { damage: actualDamage, health: nextHp, died: false };
+  }
+
+  killNpc(npcObject) {
+    if (!npcObject) return false;
+    if (npcObject.getData('dead')) return false;
+
+    npcObject.setData('dead', true);
+    npcObject.setData('hp', 0);
+    this.stopNpcWander(npcObject);
+    this.clearNpcPlayerCollider(npcObject);
+
+    const index = this.npcObjects.indexOf(npcObject);
+    if (index >= 0) this.npcObjects.splice(index, 1);
+
+    const npcId = npcObject.getData('npcId');
+    if (typeof npcId === 'string') this.npcIds.delete(npcId);
+
+    npcObject._npcWanderTween = null;
+    npcObject._npcWanderTimer = null;
+    npcObject._npcPlayerCollider = null;
+
+    if (typeof npcObject.destroy === 'function' && !npcObject.destroyed) {
+      npcObject.destroy();
+    }
+    return true;
   }
 
   startNpcWander(npcObject) {
@@ -397,6 +489,9 @@ class ChunkInstance {
       npcObject.setData('wanderTargetLocalTileY', null);
       npcObject.setData('wanderStarted', false);
       npcObject.setData('wanderStopped', false);
+      npcObject.setData('maxHp', 3);
+      npcObject.setData('hp', 3);
+      npcObject.setData('dead', false);
       npcObject._npcWanderTween = null;
       npcObject._npcWanderTimer = null;
       npcObject._npcPlayerCollider = null;
@@ -416,9 +511,10 @@ class ChunkInstance {
 
   destroyNpcs() {
     this.npcObjects.slice().forEach((npcObject) => {
+      if (!npcObject || npcObject.getData('dead')) return;
       this.stopNpcWander(npcObject);
       this.clearNpcPlayerCollider(npcObject);
-      if (npcObject && typeof npcObject.destroy === 'function') {
+      if (typeof npcObject.destroy === 'function') {
         npcObject.destroy();
       }
     });
