@@ -912,6 +912,65 @@ class ChunkInstance {
     this.clearNpcWanderTimer(npcObject);
   }
 
+  clearNpcPlayerCollider(npcObject) {
+    if (!npcObject) return;
+    const collider = npcObject._npcPlayerCollider;
+    npcObject._npcPlayerCollider = null;
+    if (!collider) return;
+    if (typeof collider.destroy === 'function') collider.destroy();
+  }
+
+  syncNpcPhysicsBody(npcObject) {
+    if (!npcObject || !npcObject.body) return;
+    if (typeof npcObject.body.updateFromGameObject === 'function') {
+      npcObject.body.updateFromGameObject();
+      return;
+    }
+    if (typeof npcObject.body.reset === 'function') {
+      npcObject.body.reset(npcObject.x, npcObject.y);
+    }
+  }
+
+  setupNpcPhysicsBody(npcObject) {
+    if (!npcObject || npcObject.body) return;
+    if (!this.scene || !this.scene.physics || !this.scene.physics.add) return;
+    if (typeof this.scene.physics.add.existing !== 'function') return;
+
+    this.scene.physics.add.existing(npcObject);
+    const body = npcObject.body;
+    if (!body) return;
+
+    if (typeof body.setAllowGravity === 'function') body.setAllowGravity(false);
+    else body.allowGravity = false;
+
+    if (typeof body.setImmovable === 'function') body.setImmovable(true);
+    else body.immovable = true;
+
+    // Keep Arcade body following the tweened image instead of driving velocity.
+    body.moves = false;
+
+    const frameWidth = Math.max(1, Math.round(npcObject.displayWidth || npcObject.width || 28));
+    const frameHeight = Math.max(1, Math.round(npcObject.displayHeight || npcObject.height || 28));
+    const bodyWidth = Math.max(8, Math.round(frameWidth * 0.5));
+    const bodyHeight = Math.max(6, Math.round(frameHeight * 0.36));
+    const offsetX = Math.round((frameWidth - bodyWidth) / 2);
+    const offsetY = Math.round(frameHeight - bodyHeight - Math.max(2, Math.round(frameHeight * 0.08)));
+
+    if (typeof body.setSize === 'function') body.setSize(bodyWidth, bodyHeight);
+    if (typeof body.setOffset === 'function') body.setOffset(offsetX, offsetY);
+  }
+
+  setupNpcPlayerCollider(npcObject) {
+    if (!npcObject || npcObject._npcPlayerCollider) return;
+    if (!this.scene || !this.scene.physics || !this.scene.physics.add) return;
+    if (typeof this.scene.physics.add.collider !== 'function') return;
+
+    const player = this.scene.player;
+    if (!player || !player.body) return;
+
+    npcObject._npcPlayerCollider = this.scene.physics.add.collider(npcObject, player);
+  }
+
   startNpcWander(npcObject) {
     if (!this.isNpcWanderActive(npcObject)) return;
     if (npcObject.getData('wanderStarted')) return;
@@ -974,6 +1033,7 @@ class ChunkInstance {
         npcObject._npcWanderTween = null;
         npcObject.setData('currentLocalTileX', target.localTileX);
         npcObject.setData('currentLocalTileY', target.localTileY);
+        this.syncNpcPhysicsBody(npcObject);
         if (this.scene && typeof this.scene.updateWorldDepth === 'function') {
           this.scene.updateWorldDepth(npcObject);
         } else if (typeof npcObject.setDepth === 'function') {
@@ -1022,7 +1082,7 @@ class ChunkInstance {
         descriptor.localTileX,
         descriptor.localTileY
       );
-      // Match TREE visuals: plain image, no physics body.
+      // Image is tweened; Arcade body is immovable and follows the visual.
       const npcObject = this.scene.add.image(position.x, position.y, 'rabbit-placeholder');
       npcObject.setDataEnabled();
       npcObject.setData('npcId', npcId);
@@ -1037,6 +1097,9 @@ class ChunkInstance {
       npcObject.setData('wanderStopped', false);
       npcObject._npcWanderTween = null;
       npcObject._npcWanderTimer = null;
+      npcObject._npcPlayerCollider = null;
+      this.setupNpcPhysicsBody(npcObject);
+      this.setupNpcPlayerCollider(npcObject);
       if (typeof this.scene.updateWorldDepth === 'function') {
         this.scene.updateWorldDepth(npcObject);
       } else {
@@ -1052,6 +1115,7 @@ class ChunkInstance {
   destroyNpcs() {
     this.npcObjects.slice().forEach((npcObject) => {
       this.stopNpcWander(npcObject);
+      this.clearNpcPlayerCollider(npcObject);
       if (npcObject && typeof npcObject.destroy === 'function') {
         npcObject.destroy();
       }

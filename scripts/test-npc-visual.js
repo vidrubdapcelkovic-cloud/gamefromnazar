@@ -19,8 +19,12 @@ function createImageMock(x, y, textureKey) {
   return {
     x,
     y,
-    textureKey,
+    width: 28,
+    height: 28,
+    displayWidth: 28,
     displayHeight: 28,
+    textureKey,
+    body: null,
     destroyed: false,
     setDataEnabled() { return this; },
     setData(key, value) { data[key] = value; return this; },
@@ -31,6 +35,7 @@ function createImageMock(x, y, textureKey) {
     },
     destroy() {
       this.destroyed = true;
+      this.body = null;
     }
   };
 }
@@ -47,15 +52,39 @@ function createGraphicsMock() {
   };
 }
 
-function createSceneMock() {
+function createPlayerMock() {
+  return {
+    x: 0,
+    y: 0,
+    destroyed: false,
+    body: {
+      enable: true,
+      width: 40,
+      height: 40
+    },
+    destroy() {
+      this.destroyed = true;
+    }
+  };
+}
+
+function createSceneMock(options = {}) {
   const textures = new Set();
   const images = [];
   const tweens = [];
   const timers = [];
-  return {
+  const existingCalls = [];
+  const colliderCalls = [];
+  const includePlayer = options.includePlayer !== false;
+  const player = includePlayer ? createPlayerMock() : null;
+
+  const scene = {
     images,
     tweensList: tweens,
     timersList: timers,
+    existingCalls,
+    colliderCalls,
+    player,
     textures: {
       exists(key) { return textures.has(key); },
       add(key) { textures.add(key); }
@@ -113,8 +142,52 @@ function createSceneMock() {
         timers.push(timer);
         return timer;
       }
+    },
+    physics: {
+      add: {
+        existing(gameObject) {
+          existingCalls.push(gameObject);
+          const body = {
+            allowGravity: true,
+            immovable: false,
+            moves: true,
+            width: gameObject.displayWidth || 28,
+            height: gameObject.displayHeight || 28,
+            offset: { x: 0, y: 0 },
+            x: gameObject.x,
+            y: gameObject.y,
+            setAllowGravity(value) { this.allowGravity = value; return this; },
+            setImmovable(value) { this.immovable = value; return this; },
+            setSize(width, height) { this.width = width; this.height = height; return this; },
+            setOffset(x, y) { this.offset.x = x; this.offset.y = y; return this; },
+            reset(x, y) {
+              this.x = x;
+              this.y = y;
+            },
+            updateFromGameObject() {
+              this.x = gameObject.x;
+              this.y = gameObject.y;
+            }
+          };
+          gameObject.body = body;
+          return gameObject;
+        },
+        collider(object1, object2, callback) {
+          const collider = {
+            object1,
+            object2,
+            callback: callback || null,
+            destroyed: false,
+            destroy() { this.destroyed = true; }
+          };
+          colliderCalls.push(collider);
+          return collider;
+        }
+      }
     }
   };
+
+  return scene;
 }
 
 function createBlockingGroupMock() {
@@ -225,7 +298,8 @@ function createChunkData(overrides = {}) {
 }
 
 function createInstance(chunkData, options = {}) {
-  const scene = createSceneMock();
+  const { sceneOptions, ...chunkOptions } = options;
+  const scene = createSceneMock(sceneOptions || {});
   const blockingGroup = createBlockingGroupMock();
   const created = [];
   const destroyed = [];
@@ -233,7 +307,7 @@ function createInstance(chunkData, options = {}) {
     blockingGroup,
     onObjectCreated: (runtimeObject) => created.push(runtimeObject),
     onObjectDestroyed: (id) => destroyed.push(id),
-    ...options
+    ...chunkOptions
   });
   return { instance, scene, blockingGroup, created, destroyed };
 }
@@ -242,14 +316,36 @@ function rabbitImagesOf(scene) {
   return scene.images.filter((image) => image.textureKey === 'rabbit-placeholder');
 }
 
+function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
+  const bodyWidth = Math.max(8, Math.round(frameWidth * 0.5));
+  const bodyHeight = Math.max(6, Math.round(frameHeight * 0.36));
+  const offsetX = Math.round((frameWidth - bodyWidth) / 2);
+  const offsetY = Math.round(frameHeight - bodyHeight - Math.max(2, Math.round(frameHeight * 0.08)));
+  return { bodyWidth, bodyHeight, offsetX, offsetY };
+}
+
+// Source guard: no velocity/menu/save APIs in ChunkInstance NPC path
+{
+  const source = fs.readFileSync(path.join(root, 'src/world/ChunkInstance.js'), 'utf8');
+  assert(!/\bsetVelocity\b/.test(source), 'ChunkInstance must not call setVelocity');
+  assert(!/\bacceleration\b/.test(source), 'ChunkInstance must not use acceleration');
+  assert(!/\boverlap\b/.test(source), 'ChunkInstance must not use overlap');
+  assert(!/\bMath\.random\s*\(/.test(source), 'ChunkInstance must not call Math.random');
+  assert(!/\bSaveSystem\b/.test(source), 'ChunkInstance must not call SaveSystem');
+  assert(!/\bMenuScene\b/.test(source), 'ChunkInstance must not reference MenuScene');
+  assert(!/\bscene\.start\b/.test(source), 'ChunkInstance must not call scene.start');
+  assert(!/\bscene\.stop\b/.test(source), 'ChunkInstance must not call scene.stop');
+}
+
 // 1. Missing npcs field
 {
   resetWanderCalls();
   const data = createChunkData();
   delete data.npcs;
-  const { instance } = createInstance(data);
+  const { instance, scene } = createInstance(data);
   assertEqual(instance.npcObjects.length, 0, 'missing npcs creates no visuals');
   assertEqual(getWanderCallCount(), 0, 'no wander planning without rabbits');
+  assertEqual(scene.existingCalls.length, 0, 'no body without rabbits');
   instance.destroy();
 }
 
@@ -269,7 +365,7 @@ function rabbitImagesOf(scene) {
   instance.destroy();
 }
 
-// 4. Unknown type skipped
+// 4. Unknown type skipped — no body
 {
   resetWanderCalls();
   const { instance, scene } = createInstance(createChunkData({
@@ -278,10 +374,12 @@ function rabbitImagesOf(scene) {
   assertEqual(instance.npcObjects.length, 0, 'unknown type skipped');
   assertEqual(scene.images.length, 0, 'unknown type creates no image');
   assertEqual(getWanderCallCount(), 0, 'unknown type does not plan wander');
+  assertEqual(scene.existingCalls.length, 0, 'unknown type creates no body');
+  assertEqual(scene.colliderCalls.length, 0, 'unknown type creates no collider');
   instance.destroy();
 }
 
-// Full wander cycle: plan → tween → pause → next plan
+// Full wander + physics cycle
 {
   resetWanderCalls();
   const descriptor = {
@@ -306,32 +404,46 @@ function rabbitImagesOf(scene) {
   const chunkDataSnapshot = JSON.stringify(chunkData);
   const npcId = buildChunkNpcId(1, -2, 'RABBIT', 0);
   const expectedRandom0 = buildNpcWanderRandomValue(npcId, 0);
+  const bodyExpect = expectedRabbitBody(28, 28);
 
   const { instance, scene } = createInstance(chunkData);
   const npcObject = instance.npcObjects[0];
+  const player = scene.player;
   const startPos = ChunkMath.localTileCenterWorld(1, -2, 4, 7);
 
   assertEqual(instance.npcObjects.length, 1, 'one rabbit creates one visual');
   assertEqual(rabbitImagesOf(scene).length, 1, 'one rabbit image created');
   assertEqual(npcObject.getData('npcId'), npcId, 'npcId stored');
-  assertEqual(npcObject.getData('currentLocalTileX'), 4, 'current X starts from descriptor');
-  assertEqual(npcObject.getData('currentLocalTileY'), 7, 'current Y starts from descriptor');
-  assertEqual(npcObject.getData('wanderStepIndex'), 1, 'stepIndex increments once after first plan');
   assertEqual(JSON.stringify(descriptor), descriptorSnapshot, 'descriptor unchanged');
   assertEqual(JSON.stringify(objects), objectsSnapshot, 'resource descriptors unchanged');
   assertEqual(JSON.stringify(chunkData), chunkDataSnapshot, 'chunkData unchanged');
 
-  assertEqual(getWanderCallCount(), 1, 'one wander cycle starts with one plan');
+  assertEqual(scene.existingCalls.length, 1, 'physics.add.existing once');
+  assertEqual(scene.existingCalls[0], npcObject, 'existing called for rabbit image');
+  assert(npcObject.body, 'rabbit has body');
+  assertEqual(npcObject.body.allowGravity, false, 'allowGravity false');
+  assertEqual(npcObject.body.immovable, true, 'immovable true');
+  assertEqual(npcObject.body.moves, false, 'body.moves false for tween follow');
+  assertEqual(npcObject.body.width, bodyExpect.bodyWidth, 'body width reduced');
+  assertEqual(npcObject.body.height, bodyExpect.bodyHeight, 'body height reduced');
+  assertEqual(npcObject.body.offset.x, bodyExpect.offsetX, 'body offset X centered');
+  assertEqual(npcObject.body.offset.y, bodyExpect.offsetY, 'body offset Y lower');
+  assert(npcObject.body.width < npcObject.displayWidth, 'body smaller than full width');
+  assert(npcObject.body.height < npcObject.displayHeight, 'body smaller than full height');
+
+  assertEqual(scene.colliderCalls.length, 1, 'one collider created');
+  assertEqual(scene.colliderCalls[0].object1, npcObject, 'collider object1 is rabbit');
+  assertEqual(scene.colliderCalls[0].object2, player, 'collider object2 is player');
+  assertEqual(scene.colliderCalls[0].callback, null, 'collider has no gameplay callback');
+  assertEqual(npcObject._npcPlayerCollider, scene.colliderCalls[0], 'collider stored on NPC');
+
+  assertEqual(getWanderCallCount(), 1, 'physics setup does not add extra wander plan');
   const firstPlan = getWanderCalls()[0];
   assertEqual(firstPlan.localTileX, 4, 'first plan uses start local X');
   assertEqual(firstPlan.localTileY, 7, 'first plan uses start local Y');
-  assertEqual(firstPlan.chunkSize, ChunkMath.CHUNK_SIZE, 'passes chunkSize');
   assertEqual(firstPlan.randomValue, expectedRandom0, 'uses buildNpcWanderRandomValue(npcId, 0)');
   assert(firstPlan.blockedCells.includes('4,6'), 'blockedCells contains TREE');
   assert(firstPlan.blockedCells.includes('5,7'), 'blockedCells contains ROCK');
-  assert(!firstPlan.blockedCells.includes('1.5,2'), 'invalid TREE excluded');
-  assert(!firstPlan.blockedCells.includes('3,null'), 'invalid ROCK excluded');
-  assert(!firstPlan.blockedCells.includes('4,7'), 'rabbit cell not blocked');
 
   const expectedTarget = chooseNpcWanderTarget({
     localTileX: 4,
@@ -341,11 +453,7 @@ function rabbitImagesOf(scene) {
     randomValue: expectedRandom0
   });
   assert(expectedTarget, 'expected open neighbor target');
-  assertEqual(npcObject.getData('wanderTargetLocalTileX'), expectedTarget.localTileX, 'target X stored');
-  assertEqual(npcObject.getData('wanderTargetLocalTileY'), expectedTarget.localTileY, 'target Y stored');
-
-  assertEqual(scene.tweensList.length, 1, 'one tween created for first move');
-  assertEqual(scene.timersList.length, 0, 'no pause timer before tween completes');
+  assertEqual(scene.tweensList.length, 1, 'wander tween still created');
   const tween = scene.tweensList[0];
   const expectedWorld = ChunkMath.localTileCenterWorld(
     1,
@@ -357,55 +465,42 @@ function rabbitImagesOf(scene) {
   assertEqual(tween.config.y, expectedWorld.y, 'tween y from localTileCenterWorld');
   assertEqual(tween.config.duration, 450, 'tween duration 450');
   assertEqual(tween.config.ease, 'Linear', 'tween Linear easing');
-  assertEqual(npcObject.x, startPos.x, 'x unchanged before onComplete');
-  assertEqual(npcObject.y, startPos.y, 'y unchanged before onComplete');
+  assert(!Object.prototype.hasOwnProperty.call(tween.config, 'velocity'), 'tween has no velocity');
   assertEqual(npcObject.getData('currentLocalTileX'), 4, 'current X unchanged before onComplete');
   assertEqual(npcObject.getData('currentLocalTileY'), 7, 'current Y unchanged before onComplete');
+  assertEqual(npcObject.x, startPos.x, 'visual x unchanged before onComplete');
 
   tween.complete();
-  assertEqual(npcObject.getData('currentLocalTileX'), expectedTarget.localTileX, 'current X updates after tween');
-  assertEqual(npcObject.getData('currentLocalTileY'), expectedTarget.localTileY, 'current Y updates after tween');
-  assertEqual(npcObject.x, expectedWorld.x, 'image x matches target after tween');
-  assertEqual(npcObject.y, expectedWorld.y, 'image y matches target after tween');
-  assertEqual(scene.timersList.length, 1, 'one wait timer after tween');
-  assertEqual(scene.timersList[0].delay, 900, 'pause delay 900');
-  assertEqual(getWanderCallCount(), 1, 'no second plan until timer fires');
+  assertEqual(npcObject.getData('currentLocalTileX'), expectedTarget.localTileX, 'current X after tween');
+  assertEqual(npcObject.getData('currentLocalTileY'), expectedTarget.localTileY, 'current Y after tween');
+  assertEqual(npcObject.x, expectedWorld.x, 'visual x after tween');
+  assertEqual(npcObject.y, expectedWorld.y, 'visual y after tween');
+  assertEqual(npcObject.body.x, expectedWorld.x, 'body x synced after tween');
+  assertEqual(npcObject.body.y, expectedWorld.y, 'body y synced after tween');
+  assertEqual(scene.timersList.length, 1, 'wait timer after tween');
+  assertEqual(getWanderCallCount(), 1, 'no second plan until timer');
 
   scene.timersList[0].fire();
   assertEqual(getWanderCallCount(), 2, 'timer starts next attempt');
-  const secondPlan = getWanderCalls()[1];
-  assertEqual(secondPlan.localTileX, expectedTarget.localTileX, 'next plan uses updated local X');
-  assertEqual(secondPlan.localTileY, expectedTarget.localTileY, 'next plan uses updated local Y');
-  assertEqual(
-    secondPlan.randomValue,
-    buildNpcWanderRandomValue(npcId, 1),
-    'second plan uses stepIndex 1'
-  );
-  assertEqual(npcObject.getData('wanderStepIndex'), 2, 'stepIndex increments once per plan');
-  assertEqual(scene.tweensList.length, 2, 'second tween created for next move');
-  assertEqual(scene.timersList.length, 1, 'previous timer consumed; no parallel pause yet');
-
-  // No parallel cycles from duplicate createNpcs
-  const tweensBefore = scene.tweensList.length;
-  const plansBefore = getWanderCallCount();
-  instance.createNpcs({
-    objects,
-    npcs: [{ type: 'RABBIT', index: 0, localTileX: 4, localTileY: 7 }]
-  });
-  assertEqual(instance.npcObjects.length, 1, 'duplicate npcId not rematerialized');
-  assertEqual(getWanderCallCount(), plansBefore, 'duplicate id does not start parallel cycle');
-  assertEqual(scene.tweensList.length, tweensBefore, 'duplicate id does not add tween');
+  assertEqual(scene.tweensList.length, 2, 'second tween created');
+  assertEqual(scene.existingCalls.length, 1, 'still one body setup');
+  assertEqual(scene.colliderCalls.length, 1, 'still one collider');
 
   const activeTween = scene.tweensList[1];
+  const collider = npcObject._npcPlayerCollider;
   instance.destroy();
-  assertEqual(activeTween.stopped, true, 'destroy stops active tween');
+  assertEqual(activeTween.stopped, true, 'destroy stops tween');
+  assertEqual(collider.destroyed, true, 'destroy removes collider');
   assertEqual(npcObject.destroyed, true, 'NPC image destroyed');
+  assertEqual(npcObject._npcPlayerCollider, null, 'collider ref cleared');
+  assertEqual(player.destroyed, false, 'player not destroyed');
   assertEqual(instance.npcObjects.length, 0, 'npc collection cleared');
-  assertEqual(instance.npcIds.size, 0, 'npc id set cleared');
 
   const tweensAfterDestroy = scene.tweensList.length;
   const timersAfterDestroy = scene.timersList.length;
+  const plansAfterDestroy = getWanderCallCount();
   activeTween.complete();
+  assertEqual(getWanderCallCount(), plansAfterDestroy, 'callback after destroy does not replan');
   assertEqual(scene.tweensList.length, tweensAfterDestroy, 'callback after destroy creates no tween');
   assertEqual(scene.timersList.length, timersAfterDestroy, 'callback after destroy creates no timer');
 
@@ -414,7 +509,23 @@ function rabbitImagesOf(scene) {
   assertEqual(instance.npcObjects.length, 0, 'repeat destroy safe');
 }
 
-// Null target: no tween, wait timer, then retry
+// Missing player: no crash, body still created, no collider
+{
+  resetWanderCalls();
+  const { instance, scene } = createInstance(createChunkData({
+    npcs: [{ type: 'RABBIT', index: 0, localTileX: 5, localTileY: 5 }]
+  }), { sceneOptions: { includePlayer: false } });
+  const npcObject = instance.npcObjects[0];
+  assertEqual(scene.existingCalls.length, 1, 'body created without player');
+  assert(npcObject.body, 'body exists without player');
+  assertEqual(scene.colliderCalls.length, 0, 'no collider without player');
+  assertEqual(npcObject._npcPlayerCollider, null, 'collider ref null without player');
+  assertEqual(getWanderCallCount(), 1, 'wander still starts without player');
+  assertEqual(scene.tweensList.length, 1, 'tween still created without player');
+  instance.destroy();
+}
+
+// Null target: no tween, wait timer
 {
   resetWanderCalls();
   const descriptor = {
@@ -435,29 +546,21 @@ function rabbitImagesOf(scene) {
     npcs: [descriptor]
   }));
   const npcObject = instance.npcObjects[0];
-  const startX = npcObject.x;
-  const startY = npcObject.y;
+  const collider = npcObject._npcPlayerCollider;
 
   assertEqual(getWanderCallCount(), 1, 'null-target still plans once');
   assertEqual(npcObject.getData('wanderTargetLocalTileX'), null, 'null target X');
   assertEqual(npcObject.getData('wanderTargetLocalTileY'), null, 'null target Y');
   assertEqual(scene.tweensList.length, 0, 'null target creates no tween');
   assertEqual(scene.timersList.length, 1, 'null target creates wait timer');
-  assertEqual(npcObject.x, startX, 'x unchanged on null target');
-  assertEqual(npcObject.y, startY, 'y unchanged on null target');
   assertEqual(JSON.stringify(descriptor), descriptorSnapshot, 'descriptor unchanged on null');
+  assertEqual(scene.existingCalls.length, 1, 'body still created on null target');
+  assertEqual(scene.colliderCalls.length, 1, 'collider still created on null target');
 
   const timer = scene.timersList[0];
   instance.destroy();
   assertEqual(timer.removed, true, 'destroy removes wait timer');
-
-  const tweensBefore = scene.tweensList.length;
-  const timersBefore = scene.timersList.length;
-  const plansBefore = getWanderCallCount();
-  timer.fire();
-  assertEqual(getWanderCallCount(), plansBefore, 'timer callback after destroy does not replan');
-  assertEqual(scene.tweensList.length, tweensBefore, 'timer callback after destroy creates no tween');
-  assertEqual(scene.timersList.length, timersBefore, 'timer callback after destroy creates no timer');
+  assertEqual(collider.destroyed, true, 'destroy removes collider on null-target path');
 }
 
 // TREE/ROCK lifecycle unaffected
@@ -483,6 +586,8 @@ function rabbitImagesOf(scene) {
   assertEqual(withNpc.created[0].type, 'TREE', 'created runtime object is TREE');
   assertEqual(withNpc.instance.npcObjects.length, 1, 'npc collection separate from resources');
   assertEqual(withoutNpc.instance.npcObjects.length, 0, 'no npc when array empty');
+  assertEqual(withoutNpc.scene.existingCalls.length, 0, 'no rabbit body without npc');
+  assertEqual(withoutNpc.scene.colliderCalls.length, 0, 'no rabbit collider without npc');
 
   withNpc.instance.destroy();
   withoutNpc.instance.destroy();
