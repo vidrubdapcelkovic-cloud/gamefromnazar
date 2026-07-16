@@ -1857,7 +1857,7 @@ class GameScene extends Phaser.Scene {
       this.restoreRemovedWorldObjects(state.world.removedObjectIds);
     }
     if (!this.groundItemSystem.restoreState(state.world.groundItems)
-      || !this.buildingSystem.restoreState(this.useChunkedWorld ? [] : state.world.walls)
+      || !this.buildingSystem.restoreState(Array.isArray(state.world.walls) ? state.world.walls : [])
       || !this.creatureSystem.restoreState(this.useChunkedWorld ? [] : state.world.deadCreatureIds)) {
       throw new Error('Ошибка импорта сохранения.');
     }

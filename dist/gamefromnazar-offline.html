@@ -2193,11 +2193,12 @@ class SaveSystem {
           || !Number.isFinite(item.x) || !Number.isFinite(item.y)) throw new Error();
         return { itemType: item.itemType, quantity: item.quantity, x: item.x, y: item.y };
       });
+      const isChunkedSave = state.worldSeed !== undefined && state.worldSeed !== null;
       const wallCells = new Set();
       const buildingIds = new Set();
       const walls = w.walls.map((wall) => {
         if (!wall || !BuildCatalog[wall.buildType] || !Number.isInteger(wall.col) || !Number.isInteger(wall.row)
-          || wall.col < 0 || wall.col >= 48 || wall.row < 0 || wall.row >= 36) throw new Error();
+          || (!isChunkedSave && (wall.col < 0 || wall.col >= 48 || wall.row < 0 || wall.row >= 36))) throw new Error();
         const key = `${wall.col},${wall.row}`; if (wallCells.has(key)) throw new Error(); wallCells.add(key);
         if (wall.id !== undefined
           && (typeof wall.id !== 'string' || wall.id.length === 0 || buildingIds.has(wall.id))) throw new Error();
@@ -6446,7 +6447,7 @@ class GameScene extends Phaser.Scene {
       this.restoreRemovedWorldObjects(state.world.removedObjectIds);
     }
     if (!this.groundItemSystem.restoreState(state.world.groundItems)
-      || !this.buildingSystem.restoreState(this.useChunkedWorld ? [] : state.world.walls)
+      || !this.buildingSystem.restoreState(Array.isArray(state.world.walls) ? state.world.walls : [])
       || !this.creatureSystem.restoreState(this.useChunkedWorld ? [] : state.world.deadCreatureIds)) {
       throw new Error('Ошибка импорта сохранения.');
     }
