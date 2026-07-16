@@ -1,3 +1,27 @@
+function buildNpcWanderRandomValue(npcId, stepIndex) {
+  if (typeof npcId !== 'string' || npcId.length === 0) {
+    throw new Error('Некорректный npcId для блуждания NPC.');
+  }
+  if (!Number.isInteger(stepIndex) || stepIndex < 0) {
+    throw new Error('Некорректный stepIndex для блуждания NPC.');
+  }
+
+  // Stable FNV-1a style string hash mixed with stepIndex. Deterministic, no RNG API.
+  let hash = 2166136261;
+  for (let index = 0; index < npcId.length; index += 1) {
+    hash ^= npcId.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  hash ^= stepIndex >>> 0;
+  hash = Math.imul(hash, 16777619);
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x7feb352d);
+  hash ^= hash >>> 15;
+  hash = Math.imul(hash, 0x846ca68b);
+  hash ^= hash >>> 16;
+  return (hash >>> 0) / 4294967296;
+}
+
 function chooseNpcWanderTarget(options) {
   if (!options || typeof options !== 'object') {
     throw new Error('Некорректные параметры выбора клетки блуждания NPC.');

@@ -55,12 +55,45 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(
-  `${helperSource}\n;exports.chooseNpcWanderTarget = chooseNpcWanderTarget;`,
+  `${helperSource}\n;exports.chooseNpcWanderTarget = chooseNpcWanderTarget; exports.buildNpcWanderRandomValue = buildNpcWanderRandomValue;`,
   context,
   { filename: 'npc-wander-bundle.js' }
 );
 
-const { chooseNpcWanderTarget } = context.exports;
+const { chooseNpcWanderTarget, buildNpcWanderRandomValue } = context.exports;
+
+// buildNpcWanderRandomValue
+{
+  const value = buildNpcWanderRandomValue('chunk_1_-2_NPC_RABBIT_0', 0);
+  assert(typeof value === 'number', 'randomValue is a number');
+  assert(Number.isFinite(value), 'randomValue is finite');
+  assert(value >= 0 && value < 1, 'randomValue in [0, 1)');
+
+  assertEqual(
+    buildNpcWanderRandomValue('chunk_1_-2_NPC_RABBIT_0', 3),
+    buildNpcWanderRandomValue('chunk_1_-2_NPC_RABBIT_0', 3),
+    'same npcId+stepIndex is deterministic'
+  );
+
+  const sequence = [];
+  for (let step = 0; step < 8; step += 1) {
+    sequence.push(buildNpcWanderRandomValue('chunk_1_-2_NPC_RABBIT_0', step));
+  }
+  const unique = new Set(sequence.map((entry) => String(entry)));
+  assert(unique.size > 1, 'different stepIndex values are not all identical');
+
+  assert(
+    buildNpcWanderRandomValue('chunk_1_-2_NPC_RABBIT_0', 0)
+      !== buildNpcWanderRandomValue('chunk_2_0_NPC_RABBIT_0', 0),
+    'different npcId values differ for checked case'
+  );
+
+  assertThrows(() => buildNpcWanderRandomValue('', 0), 'empty npcId');
+  assertThrows(() => buildNpcWanderRandomValue(null, 0), 'null npcId');
+  assertThrows(() => buildNpcWanderRandomValue('id', -1), 'negative stepIndex');
+  assertThrows(() => buildNpcWanderRandomValue('id', 1.5), 'non-integer stepIndex');
+  assertThrows(() => buildNpcWanderRandomValue('id', NaN), 'NaN stepIndex');
+}
 
 function cloneOptions(options) {
   return {

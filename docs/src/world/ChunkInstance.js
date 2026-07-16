@@ -13,6 +13,7 @@ class ChunkInstance {
     this.ownedObjectIds = [];
     this.npcObjects = [];
     this.npcIds = new Set();
+    this.npcBlockedCells = new Set();
     this.createGround(chunkData);
     this.createObjects(chunkData);
     this.createNpcs(chunkData);
@@ -162,9 +163,147 @@ class ChunkInstance {
     graphics.destroy();
   }
 
+  buildNpcBlockedCells(chunkData) {
+    const blockedCells = new Set();
+    const objects = Array.isArray(chunkData && chunkData.objects) ? chunkData.objects : [];
+    objects.forEach((objectData) => {
+      if (!objectData || (objectData.type !== 'TREE' && objectData.type !== 'ROCK')) return;
+      if (!Number.isInteger(objectData.localTileX) || !Number.isInteger(objectData.localTileY)) return;
+      blockedCells.add(`${objectData.localTileX},${objectData.localTileY}`);
+    });
+    return blockedCells;
+  }
+
+  isNpcWanderActive(npcObject) {
+    return !this.destroyed
+      && !!npcObject
+      && !npcObject.destroyed
+      && this.npcObjects.includes(npcObject)
+      && !npcObject.getData('wanderStopped');
+  }
+
+  isNpcWanderCallbackValid(npcObject, kind, handle) {
+    if (!this.isNpcWanderActive(npcObject)) return false;
+    if (kind === 'tween' && npcObject._npcWanderTween !== handle) return false;
+    if (kind === 'timer' && npcObject._npcWanderTimer !== handle) return false;
+    return true;
+  }
+
+  clearNpcWanderTween(npcObject) {
+    if (!npcObject) return;
+    const tween = npcObject._npcWanderTween;
+    npcObject._npcWanderTween = null;
+    if (!tween) return;
+    if (typeof tween.stop === 'function') tween.stop();
+    else if (typeof tween.remove === 'function') tween.remove();
+  }
+
+  clearNpcWanderTimer(npcObject) {
+    if (!npcObject) return;
+    const timer = npcObject._npcWanderTimer;
+    npcObject._npcWanderTimer = null;
+    if (!timer) return;
+    if (typeof timer.remove === 'function') timer.remove(false);
+    else if (typeof timer.destroy === 'function') timer.destroy();
+  }
+
+  stopNpcWander(npcObject) {
+    if (!npcObject) return;
+    npcObject.setData('wanderStopped', true);
+    this.clearNpcWanderTween(npcObject);
+    this.clearNpcWanderTimer(npcObject);
+  }
+
+  startNpcWander(npcObject) {
+    if (!this.isNpcWanderActive(npcObject)) return;
+    if (npcObject.getData('wanderStarted')) return;
+    npcObject.setData('wanderStarted', true);
+    this.runNpcWanderAttempt(npcObject);
+  }
+
+  runNpcWanderAttempt(npcObject) {
+    if (!this.isNpcWanderActive(npcObject)) return;
+
+    const npcId = npcObject.getData('npcId');
+    const stepIndex = npcObject.getData('wanderStepIndex');
+    const currentLocalTileX = npcObject.getData('currentLocalTileX');
+    const currentLocalTileY = npcObject.getData('currentLocalTileY');
+    const randomValue = buildNpcWanderRandomValue(npcId, stepIndex);
+    const target = chooseNpcWanderTarget({
+      localTileX: currentLocalTileX,
+      localTileY: currentLocalTileY,
+      chunkSize: ChunkMath.CHUNK_SIZE,
+      blockedCells: this.npcBlockedCells,
+      randomValue
+    });
+
+    npcObject.setData('wanderStepIndex', stepIndex + 1);
+    if (target) {
+      npcObject.setData('wanderTargetLocalTileX', target.localTileX);
+      npcObject.setData('wanderTargetLocalTileY', target.localTileY);
+    } else {
+      npcObject.setData('wanderTargetLocalTileX', null);
+      npcObject.setData('wanderTargetLocalTileY', null);
+    }
+
+    if (!target) {
+      this.scheduleNpcWanderPause(npcObject);
+      return;
+    }
+
+    const worldPos = ChunkMath.localTileCenterWorld(
+      this.chunkX,
+      this.chunkY,
+      target.localTileX,
+      target.localTileY
+    );
+    this.startNpcWanderTween(npcObject, worldPos, target);
+  }
+
+  startNpcWanderTween(npcObject, worldPos, target) {
+    if (!this.isNpcWanderActive(npcObject)) return;
+    if (!this.scene || !this.scene.tweens || typeof this.scene.tweens.add !== 'function') return;
+
+    this.clearNpcWanderTween(npcObject);
+    const tween = this.scene.tweens.add({
+      targets: npcObject,
+      x: worldPos.x,
+      y: worldPos.y,
+      duration: 450,
+      ease: 'Linear',
+      onComplete: () => {
+        if (!this.isNpcWanderCallbackValid(npcObject, 'tween', tween)) return;
+        npcObject._npcWanderTween = null;
+        npcObject.setData('currentLocalTileX', target.localTileX);
+        npcObject.setData('currentLocalTileY', target.localTileY);
+        if (this.scene && typeof this.scene.updateWorldDepth === 'function') {
+          this.scene.updateWorldDepth(npcObject);
+        } else if (typeof npcObject.setDepth === 'function') {
+          npcObject.setDepth((npcObject.y + npcObject.displayHeight / 2) * 0.1);
+        }
+        this.scheduleNpcWanderPause(npcObject);
+      }
+    });
+    npcObject._npcWanderTween = tween;
+  }
+
+  scheduleNpcWanderPause(npcObject) {
+    if (!this.isNpcWanderActive(npcObject)) return;
+    if (!this.scene || !this.scene.time || typeof this.scene.time.delayedCall !== 'function') return;
+
+    this.clearNpcWanderTimer(npcObject);
+    const timer = this.scene.time.delayedCall(900, () => {
+      if (!this.isNpcWanderCallbackValid(npcObject, 'timer', timer)) return;
+      npcObject._npcWanderTimer = null;
+      this.runNpcWanderAttempt(npcObject);
+    });
+    npcObject._npcWanderTimer = timer;
+  }
+
   createNpcs(chunkData) {
     if (this.destroyed) return;
     const npcs = Array.isArray(chunkData && chunkData.npcs) ? chunkData.npcs : [];
+    this.npcBlockedCells = this.buildNpcBlockedCells(chunkData);
     npcs.forEach((descriptor) => {
       if (!descriptor || descriptor.type !== 'RABBIT') return;
       if (!Number.isInteger(descriptor.index) || descriptor.index < 0) return;
@@ -191,6 +330,15 @@ class ChunkInstance {
       npcObject.setData('npcId', npcId);
       npcObject.setData('npcType', descriptor.type);
       npcObject.setData('chunkKey', this.key);
+      npcObject.setData('currentLocalTileX', descriptor.localTileX);
+      npcObject.setData('currentLocalTileY', descriptor.localTileY);
+      npcObject.setData('wanderStepIndex', 0);
+      npcObject.setData('wanderTargetLocalTileX', null);
+      npcObject.setData('wanderTargetLocalTileY', null);
+      npcObject.setData('wanderStarted', false);
+      npcObject.setData('wanderStopped', false);
+      npcObject._npcWanderTween = null;
+      npcObject._npcWanderTimer = null;
       if (typeof this.scene.updateWorldDepth === 'function') {
         this.scene.updateWorldDepth(npcObject);
       } else {
@@ -199,11 +347,13 @@ class ChunkInstance {
 
       this.npcIds.add(npcId);
       this.npcObjects.push(npcObject);
+      this.startNpcWander(npcObject);
     });
   }
 
   destroyNpcs() {
     this.npcObjects.slice().forEach((npcObject) => {
+      this.stopNpcWander(npcObject);
       if (npcObject && typeof npcObject.destroy === 'function') {
         npcObject.destroy();
       }
@@ -236,5 +386,6 @@ class ChunkInstance {
     this.onObjectCreated = null;
     this.onObjectDestroyed = null;
     this.isResourceRemoved = null;
+    this.npcBlockedCells = new Set();
   }
 }
