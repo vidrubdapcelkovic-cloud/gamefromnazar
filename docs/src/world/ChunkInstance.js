@@ -346,8 +346,13 @@ class ChunkInstance {
 
     npcObject.setData('dead', true);
     npcObject.setData('hp', 0);
+
+    const deathX = npcObject.x;
+    const deathY = npcObject.y;
+
     this.stopNpcWander(npcObject);
     this.clearNpcPlayerCollider(npcObject);
+    this.dropNpcLoot(deathX, deathY);
 
     const index = this.npcObjects.indexOf(npcObject);
     if (index >= 0) this.npcObjects.splice(index, 1);
@@ -363,6 +368,13 @@ class ChunkInstance {
       npcObject.destroy();
     }
     return true;
+  }
+
+  dropNpcLoot(deathX, deathY) {
+    if (!Number.isFinite(deathX) || !Number.isFinite(deathY)) return null;
+    if (!this.scene || !this.scene.groundItemSystem) return null;
+    if (typeof this.scene.groundItemSystem.spawn !== 'function') return null;
+    return this.scene.groundItemSystem.spawn('RAW_MEAT', 1, deathX, deathY);
   }
 
   startNpcWander(npcObject) {
@@ -489,8 +501,8 @@ class ChunkInstance {
       npcObject.setData('wanderTargetLocalTileY', null);
       npcObject.setData('wanderStarted', false);
       npcObject.setData('wanderStopped', false);
-      npcObject.setData('maxHp', 3);
-      npcObject.setData('hp', 3);
+      npcObject.setData('maxHp', 6);
+      npcObject.setData('hp', 6);
       npcObject.setData('dead', false);
       npcObject._npcWanderTween = null;
       npcObject._npcWanderTimer = null;

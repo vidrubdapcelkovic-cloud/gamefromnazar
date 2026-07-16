@@ -86,6 +86,7 @@ function createSceneMock(options = {}) {
   const timers = [];
   const existingCalls = [];
   const colliderCalls = [];
+  const groundItems = [];
   const includePlayer = options.includePlayer !== false;
   const player = includePlayer ? createPlayerMock() : null;
 
@@ -95,6 +96,7 @@ function createSceneMock(options = {}) {
     timersList: timers,
     existingCalls,
     colliderCalls,
+    groundItems,
     player,
     textures: {
       exists(key) { return textures.has(key); },
@@ -116,6 +118,39 @@ function createSceneMock(options = {}) {
         const image = createImageMock(x, y, textureKey);
         images.push(image);
         return image;
+      },
+      text() {
+        return {
+          setOrigin() { return this; },
+          setDepth() { return this; },
+          setText() { return this; },
+          destroy() {},
+          active: true
+        };
+      }
+    },
+    groundItemSystem: {
+      spawn(itemType, quantity, x, y) {
+        const item = {
+          id: `ground-item-${groundItems.length + 1}`,
+          itemType,
+          quantity,
+          x,
+          y,
+          active: true,
+          visualObject: { active: true, visible: true }
+        };
+        groundItems.push(item);
+        return item;
+      },
+      getItems() {
+        return groundItems.filter((item) => item.active);
+      },
+      remove(itemId) {
+        const item = groundItems.find((candidate) => candidate.id === itemId && candidate.active);
+        if (!item) return false;
+        item.active = false;
+        return true;
       }
     },
     tweens: {
@@ -606,7 +641,7 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
   assertEqual(withoutNpc.destroyed.length, 1, 'tree unload callback fires without npc');
 }
 
-// HP / damage / death lifecycle
+// HP / damage / death lifecycle + meat drop
 {
   resetWanderCalls();
   const descriptor = {
@@ -635,11 +670,14 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
   const firstTween = scene.tweensList[0];
   const startStep = npcObject.getData('wanderStepIndex');
   const plansAtStart = getWanderCallCount();
+  const deathX = npcObject.x;
+  const deathY = npcObject.y;
 
-  assertEqual(npcObject.getData('maxHp'), 3, 'maxHp = 3');
-  assertEqual(npcObject.getData('hp'), 3, 'hp = 3');
+  assertEqual(npcObject.getData('maxHp'), 6, 'maxHp = 6');
+  assertEqual(npcObject.getData('hp'), 6, 'hp = 6');
   assertEqual(npcObject.getData('dead'), false, 'dead = false');
   assertEqual(collider.callback, null, 'player collider has no damage callback');
+  assertEqual(scene.groundItems.length, 0, 'no loot while alive');
 
   const hit = instance.getNearestAttackableNpc(npcObject.x, npcObject.y, 52);
   assertEqual(hit, npcObject, 'attack range finds rabbit');
@@ -649,33 +687,40 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
     'out of range returns null'
   );
 
-  // Attack hit applies existing damage value (default melee 10 clamps to remaining HP).
   const first = instance.applyNpcDamage(npcObject, 1);
   assertEqual(first.damage, 1, 'damage 1 applied');
-  assertEqual(first.health, 2, 'hp 3 → 2');
+  assertEqual(first.health, 5, 'hp 6 → 5');
   assertEqual(first.died, false, 'still alive after 1');
-  assertEqual(npcObject.getData('hp'), 2, 'stored hp is 2');
+  assertEqual(npcObject.getData('hp'), 5, 'stored hp is 5');
   assertEqual(npcObject.getData('dead'), false, 'not dead yet');
+  assertEqual(scene.groundItems.length, 0, 'no loot while hp > 0');
   assertEqual(getWanderCallCount(), plansAtStart, 'damage does not start extra wander cycle');
   assertEqual(npcObject.getData('wanderStepIndex'), startStep, 'damage does not change stepIndex');
   assertEqual(JSON.stringify(descriptor), descriptorSnapshot, 'descriptor unchanged by damage');
   assertEqual(JSON.stringify(chunkData), chunkDataSnapshot, 'chunkData unchanged by damage');
 
   const second = instance.applyNpcDamage(npcObject, 1);
-  assertEqual(second.health, 1, 'next damage uses current hp');
+  assertEqual(second.health, 4, 'next damage uses current hp');
 
   assertThrows(() => instance.applyNpcDamage(npcObject, 0), 'invalid damage 0 throws');
   assertThrows(() => instance.applyNpcDamage(npcObject, -1), 'invalid damage negative throws');
   assertThrows(() => instance.applyNpcDamage(npcObject, Number.NaN), 'invalid damage NaN throws');
-  assertEqual(npcObject.getData('hp'), 1, 'invalid damage does not change hp');
+  assertEqual(npcObject.getData('hp'), 4, 'invalid damage does not change hp');
 
   const lethal = instance.applyNpcDamage(npcObject, 10);
-  assertEqual(lethal.damage, 1, 'large damage clamped to remaining hp');
+  assertEqual(lethal.damage, 4, 'large damage clamped to remaining hp');
   assertEqual(lethal.health, 0, 'hp becomes 0');
   assertEqual(lethal.died, true, 'death triggered once');
   assertEqual(npcObject.getData('hp'), 0, 'hp stored as 0');
   assertEqual(npcObject.getData('dead'), true, 'dead true');
   assert(npcObject.getData('hp') >= 0, 'hp never negative');
+
+  assertEqual(scene.groundItems.length, 1, 'exactly one ground item on death');
+  assertEqual(scene.groundItems[0].itemType, 'RAW_MEAT', 'loot type is RAW_MEAT');
+  assertEqual(scene.groundItems[0].quantity, 1, 'loot quantity is 1');
+  assertEqual(scene.groundItems[0].x, deathX, 'loot x matches death position');
+  assertEqual(scene.groundItems[0].y, deathY, 'loot y matches death position');
+  assert(!scene.groundItems[0]._npcPlayerCollider, 'drop has no rabbit collider');
 
   assertEqual(firstTween.stopped, true, 'death stops active tween');
   assertEqual(collider.destroyed, true, 'death destroys collider');
@@ -694,20 +739,24 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
   assertEqual(afterDead.damage, 0, 'damage after dead ignored');
   assertEqual(afterDead.died, false, 'no second death');
   assertEqual(instance.killNpc(npcObject), false, 'repeat killNpc safe');
+  assertEqual(scene.groundItems.length, 1, 'repeat death does not create second loot');
 
   const plansAfterDeath = getWanderCallCount();
   const tweensAfterDeath = scene.tweensList.length;
   const timersAfterDeath = scene.timersList.length;
+  const lootAfterDeath = scene.groundItems.length;
   firstTween.complete();
   assertEqual(getWanderCallCount(), plansAfterDeath, 'dead tween callback does not replan');
   assertEqual(scene.tweensList.length, tweensAfterDeath, 'dead tween callback creates no tween');
   assertEqual(scene.timersList.length, timersAfterDeath, 'dead tween callback creates no timer');
+  assertEqual(scene.groundItems.length, lootAfterDeath, 'dead tween callback creates no loot');
 
   instance.destroy();
   assertEqual(instance.npcObjects.length, 0, 'destroy after death safe');
+  assertEqual(scene.groundItems.length, 1, 'unload after death does not duplicate loot');
 }
 
-// Damage after ChunkInstance.destroy ignored; unload living NPC is not death
+// Damage after ChunkInstance.destroy ignored; unload living NPC is not death and drops no loot
 {
   resetWanderCalls();
   const { instance, scene } = createInstance(createChunkData({
@@ -715,19 +764,76 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
   }));
   const npcObject = instance.npcObjects[0];
   assertEqual(npcObject.getData('dead'), false, 'alive before unload');
-  assertEqual(npcObject.getData('hp'), 3, 'full hp before unload');
+  assertEqual(npcObject.getData('hp'), 6, 'full hp before unload');
   instance.destroy();
   assertEqual(npcObject.destroyed, true, 'unload destroys visual');
   assertEqual(npcObject.getData('dead'), false, 'unload is not death flow');
+  assertEqual(scene.groundItems.length, 0, 'unload living NPC creates no loot');
   const afterUnload = instance.applyNpcDamage(npcObject, 1);
   assertEqual(afterUnload.damage, 0, 'damage after destroy ignored');
   assertEqual(afterUnload.died, false, 'no death after destroy');
   assertEqual(scene.player.destroyed, false, 'player survives unload');
+  assertEqual(scene.groundItems.length, 0, 'damage after unload creates no loot');
 }
 
-// GameScene melee attack hook reaches applyNpcDamage, not creature loot path
+// Two rabbits → two separate meat drops; pickup via ground-item API
+{
+  resetWanderCalls();
+  const { instance, scene } = createInstance(createChunkData({
+    npcs: [
+      { type: 'RABBIT', index: 0, localTileX: 3, localTileY: 3 },
+      { type: 'RABBIT', index: 1, localTileX: 8, localTileY: 8 }
+    ]
+  }));
+  assertEqual(instance.npcObjects.length, 2, 'two rabbits created');
+  const firstNpc = instance.npcObjects[0];
+  const secondNpc = instance.npcObjects[1];
+  const firstPos = { x: firstNpc.x, y: firstNpc.y };
+  const secondPos = { x: secondNpc.x, y: secondNpc.y };
+
+  instance.applyNpcDamage(firstNpc, 10);
+  assertEqual(scene.groundItems.length, 1, 'first death drops one item');
+  instance.applyNpcDamage(secondNpc, 10);
+  assertEqual(scene.groundItems.length, 2, 'second death drops second item');
+  assertEqual(scene.groundItems[0].itemType, 'RAW_MEAT', 'first drop RAW_MEAT');
+  assertEqual(scene.groundItems[1].itemType, 'RAW_MEAT', 'second drop RAW_MEAT');
+  assertEqual(scene.groundItems[0].quantity, 1, 'first drop qty 1');
+  assertEqual(scene.groundItems[1].quantity, 1, 'second drop qty 1');
+  assertEqual(scene.groundItems[0].x, firstPos.x, 'first drop at first rabbit');
+  assertEqual(scene.groundItems[0].y, firstPos.y, 'first drop y at first rabbit');
+  assertEqual(scene.groundItems[1].x, secondPos.x, 'second drop at second rabbit');
+  assertEqual(scene.groundItems[1].y, secondPos.y, 'second drop y at second rabbit');
+
+  // Pickup integration: existing ground-item remove + inventory addItem contract
+  const inventory = { RAW_MEAT: 0 };
+  function pickupGroundItem(item) {
+    if (!item || !item.active) return false;
+    inventory[item.itemType] = (inventory[item.itemType] || 0) + item.quantity;
+    return scene.groundItemSystem.remove(item.id);
+  }
+
+  const firstDrop = scene.groundItems[0];
+  assert(pickupGroundItem(firstDrop), 'first drop can be picked up');
+  assertEqual(inventory.RAW_MEAT, 1, 'inventory gains 1 RAW_MEAT');
+  assertEqual(scene.groundItemSystem.getItems().length, 1, 'picked ground item removed');
+  assertEqual(pickupGroundItem(firstDrop), false, 'repeat pickup fails');
+  assertEqual(inventory.RAW_MEAT, 1, 'repeat pickup does not add again');
+
+  const secondDrop = scene.groundItemSystem.getItems()[0];
+  assert(pickupGroundItem(secondDrop), 'second drop can be picked up');
+  assertEqual(inventory.RAW_MEAT, 2, 'inventory stacks second RAW_MEAT');
+  assertEqual(scene.groundItemSystem.getItems().length, 0, 'all drops collected');
+
+  instance.destroy();
+}
+
+// Attack damage constants unchanged; fist kills 6 HP rabbit in one hit
 {
   const gameSceneSource = fs.readFileSync(path.join(root, 'src/GameScene.js'), 'utf8');
+  assert(
+    /PLAYER_MELEE_ATTACK\s*=\s*Object\.freeze\(\{\s*damage:\s*10/.test(gameSceneSource),
+    'fist melee damage remains 10'
+  );
   assert(
     /findNearestAttackableNpc\s*\(/.test(gameSceneSource),
     'GameScene finds attackable NPCs'
@@ -753,6 +859,16 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
     /physics\.add\.collider\(npcObject, player\)/.test(colliderSetup[0]),
     'collider is created without callback args'
   );
+  assert(
+    /groundItemSystem\.spawn\(\s*'RAW_MEAT'\s*,\s*1/.test(chunkInstanceSource),
+    'death drops RAW_MEAT x1 via groundItemSystem'
+  );
+  assert(
+    !/inventoryModel\.addItem/.test(chunkInstanceSource),
+    'death does not add inventory directly'
+  );
 }
+
+console.log('test-npc-visual: ok');
 
 console.log('test-npc-visual: ok');
