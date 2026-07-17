@@ -32,17 +32,16 @@ const PassiveNpcConfig = Object.freeze({
     maxHp: 20,
     lootType: 'RAW_MEAT',
     lootQuantity: 3,
-    // Production texture is 1536x1024 with a lot of transparent padding; the
-    // visible pig occupies roughly the central lower area. Displayed noticeably
-    // larger than the rabbit while keeping the source aspect ratio (3:2).
-    renderWidth: 150,
-    renderHeight: 100,
-    // Body covers the lower body and legs of the pig (source-pixel region
-    // ~x[460..1000], y[582..700] inside the 1536x1024 texture).
+    // Cropped production texture is 894x432 (content 862x400 + 16px padding).
+    // Display size preserves the pre-crop visible world size (~84.18 x 39.06).
+    renderWidth: 87,
+    renderHeight: 42,
+    // Body covers the same lower body / legs region in texture pixels.
+    // Offsets remapped after crop: oldOffset - contentOrigin + padding.
     bodyWidth: 540,
     bodyHeight: 118,
-    bodyOffsetX: 460,
-    bodyOffsetY: 582,
+    bodyOffsetX: 171,
+    bodyOffsetY: 294,
     // Slightly slower and longer pause than the rabbit.
     wanderTweenDuration: 700,
     wanderPauseDuration: 1200

@@ -72,6 +72,14 @@ const { PassiveNpcConfig, getPassiveNpcConfig, ChunkGenerator, ChunkMath, buildC
   assertEqual(pig.lootQuantity, 3, 'PIG loot quantity 3');
   assertEqual(pig.textureKey, 'pig-texture', 'PIG separate texture key');
   assert(pig.textureKey !== rabbit.textureKey, 'PIG texture differs from RABBIT');
+  assertEqual(pig.wanderTweenDuration, 700, 'PIG tween 700 unchanged');
+  assertEqual(pig.wanderPauseDuration, 1200, 'PIG pause 1200 unchanged');
+  assertEqual(pig.bodyWidth, 540, 'PIG bodyWidth preserved after crop');
+  assertEqual(pig.bodyHeight, 118, 'PIG bodyHeight preserved after crop');
+  assertEqual(pig.bodyOffsetX, 171, 'PIG bodyOffsetX remapped after crop');
+  assertEqual(pig.bodyOffsetY, 294, 'PIG bodyOffsetY remapped after crop');
+  assertEqual(pig.renderWidth, 87, 'PIG renderWidth preserves visible size');
+  assertEqual(pig.renderHeight, 42, 'PIG renderHeight preserves visible size');
 
   // PIG visually larger, distinct body, slower movement
   assert(pig.renderWidth > rabbit.renderWidth, 'PIG wider than rabbit');
@@ -236,15 +244,21 @@ function decodePng(buffer) {
 }
 
 // ---------------------------------------------------------------------------
-// 18. Asset tests
+// Asset + crop tests
 // ---------------------------------------------------------------------------
 {
+  const crypto = require('crypto');
+  const crop = require('./crop-pig-asset.js');
   const pngPath = path.join(root, 'assets/generated/pig.png');
   assert(fs.existsSync(pngPath), 'production PIG PNG exists at assets/generated/pig.png');
   const buffer = fs.readFileSync(pngPath);
   assertEqual(buffer.slice(0, 8).toString('hex'), '89504e470d0a1a0a', 'valid PNG signature');
   const { width, height, pixels } = decodePng(buffer);
   assert(width > 0 && height > 0, 'PNG has dimensions');
+  assert(width < 1536 && height < 1024, 'cropped canvas smaller than original 1536x1024');
+  assertEqual(width, 894, 'cropped width 894');
+  assertEqual(height, 432, 'cropped height 432');
+  assert(buffer.length < 1500000, 'production PNG noticeably smaller than ~2MB original');
 
   const px = (x, y) => {
     const i = (y * width + x) * 4;
@@ -256,23 +270,64 @@ function decodePng(buffer) {
     assertEqual(px(x, y)[3], 0, `corner (${x},${y}) fully transparent`);
   });
 
-  // No green background box + no obvious green halo: opaque pixels must not be green-dominant
+  // Content bbox with the crop script threshold
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
   let opaque = 0;
   let greenish = 0;
-  for (let y = 0; y < height; y += 2) {
-    for (let x = 0; x < width; x += 2) {
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
       const [r, g, b, aVal] = px(x, y);
-      if (aVal > 32) {
+      if (aVal > crop.ALPHA_THRESHOLD) {
         opaque += 1;
-        if (g > r + 24 && g > b + 24) greenish += 1;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
       }
+      if (aVal > 32 && g > r + 24 && g > b + 24) greenish += 1;
     }
   }
-  assert(opaque > 0, 'PNG has visible pig pixels');
+  assert(opaque > 0, 'PNG has opaque pig pixels');
   assertEqual(greenish, 0, 'no green background / halo among opaque pixels');
+  assertEqual(minX, crop.PADDING, 'left padding equals crop padding');
+  assertEqual(minY, crop.PADDING, 'top padding equals crop padding');
+  assertEqual(width - 1 - maxX, crop.PADDING, 'right padding equals crop padding');
+  assertEqual(height - 1 - maxY, crop.PADDING, 'bottom padding equals crop padding');
+  assertEqual(maxX - minX + 1, 862, 'content width preserved at 862');
+  assertEqual(maxY - minY + 1, 400, 'content height preserved at 400');
 
-  // Alpha channel is actually used (transparent + opaque both present)
-  assert(opaque > 0, 'has opaque pixels');
+  // Visible world size preserved within 1% vs pre-crop values
+  const pig = getPassiveNpcConfig('PIG');
+  const oldVisibleW = 150 * 862 / 1536;
+  const oldVisibleH = 100 * 400 / 1024;
+  const newVisibleW = pig.renderWidth * 862 / width;
+  const newVisibleH = pig.renderHeight * 400 / height;
+  const dW = Math.abs(newVisibleW - oldVisibleW) / oldVisibleW;
+  const dH = Math.abs(newVisibleH - oldVisibleH) / oldVisibleH;
+  assert(dW <= 0.01, `visible world width delta ${dW} within 1%`);
+  assert(dH <= 0.01, `visible world height delta ${dH} within 1%`);
+
+  // Body remapped and inside texture
+  assertEqual(pig.bodyOffsetX, 460 - 305 + 16, 'bodyOffsetX = old - cropLeft + padding');
+  assertEqual(pig.bodyOffsetY, 582 - 304 + 16, 'bodyOffsetY = old - cropTop + padding');
+  assert(pig.bodyOffsetX >= 0, 'bodyOffsetX >= 0');
+  assert(pig.bodyOffsetY >= 0, 'bodyOffsetY >= 0');
+  assert(pig.bodyOffsetX + pig.bodyWidth <= width, 'body fits horizontally');
+  assert(pig.bodyOffsetY + pig.bodyHeight <= height, 'body fits vertically');
+
+  // Idempotency: re-crop must not change hash/dimensions
+  const hashBefore = crypto.createHash('sha256').update(buffer).digest('hex');
+  const first = crop.cropPigAsset();
+  const second = crop.cropPigAsset();
+  assertEqual(first.newWidth, width, 'idempotent width');
+  assertEqual(first.newHeight, height, 'idempotent height');
+  assertEqual(second.newWidth, first.newWidth, 'second crop same width');
+  assertEqual(second.newHeight, first.newHeight, 'second crop same height');
+  assertEqual(first.sha256, hashBefore, 'first re-crop keeps file hash');
+  assertEqual(second.sha256, first.sha256, 'second re-crop keeps file hash');
 }
 
 // ---------------------------------------------------------------------------
