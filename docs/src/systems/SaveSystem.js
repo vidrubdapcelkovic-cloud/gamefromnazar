@@ -19,6 +19,10 @@ class SaveSystem {
     return unique;
   }
 
+  static normalizeRemovedNpcIds(value) {
+    return SaveSystem.normalizeRemovedResources(value);
+  }
+
   static normalizeState(state) {
     try {
       if (!state || state.version !== VERSION || !Number.isFinite(state.savedAt)) return null;
@@ -65,6 +69,7 @@ class SaveSystem {
         return normalized;
       });
       const removedResources = SaveSystem.normalizeRemovedResources(w.removedResources);
+      const removedNpcIds = SaveSystem.normalizeRemovedNpcIds(w.removedNpcIds);
       let worldSeed;
       if (state.worldSeed !== undefined && state.worldSeed !== null) {
         if (typeof state.worldSeed === 'number'
@@ -83,7 +88,14 @@ class SaveSystem {
         player: { x: p.x, y: p.y, health: p.health, hunger: p.hunger },
         dayNight,
         inventory: { activeHotbarIndex: inv.activeHotbarIndex, slots },
-        world: { removedObjectIds, groundItems, walls, deadCreatureIds, removedResources } };
+        world: {
+          removedObjectIds,
+          groundItems,
+          walls,
+          deadCreatureIds,
+          removedResources,
+          removedNpcIds
+        } };
       if (worldSeed !== undefined) normalized.worldSeed = worldSeed;
       return normalized;
     } catch { return null; }

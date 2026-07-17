@@ -349,13 +349,15 @@ function createInstance(chunkData, options = {}) {
   const blockingGroup = createBlockingGroupMock();
   const created = [];
   const destroyed = [];
+  const removedNpcMarks = [];
   const instance = new ChunkInstance(scene, chunkData, {
     blockingGroup,
     onObjectCreated: (runtimeObject) => created.push(runtimeObject),
     onObjectDestroyed: (id) => destroyed.push(id),
+    onNpcRemoved: (id) => removedNpcMarks.push(id),
     ...chunkOptions
   });
-  return { instance, scene, blockingGroup, created, destroyed };
+  return { instance, scene, blockingGroup, created, destroyed, removedNpcMarks };
 }
 
 function rabbitImagesOf(scene) {
@@ -867,6 +869,151 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
     !/inventoryModel\.addItem/.test(chunkInstanceSource),
     'death does not add inventory directly'
   );
+}
+
+// Persistent removedNpcIds: skip create + mark on death
+{
+  resetWanderCalls();
+  const removed = new Set();
+  const descriptor = {
+    type: 'RABBIT',
+    index: 0,
+    localTileX: 4,
+    localTileY: 5
+  };
+  const descriptorSnapshot = JSON.stringify(descriptor);
+  const chunkData = createChunkData({
+    objects: [{ type: 'TREE', localTileX: 1, localTileY: 1, variant: 0 }],
+    npcs: [descriptor]
+  });
+  const chunkDataSnapshot = JSON.stringify(chunkData);
+  const npcId = buildChunkNpcId(1, -2, 'RABBIT', 0);
+
+  const alive = createInstance(chunkData, {
+    isNpcRemoved: (id) => removed.has(id)
+  });
+  assertEqual(alive.instance.npcObjects.length, 1, 'living rabbit created');
+  const npcObject = alive.instance.npcObjects[0];
+  assertEqual(npcObject.getData('npcId'), npcId, 'stable npcId');
+  assertEqual(alive.removedNpcMarks.length, 0, 'no mark before death');
+
+  const destroyedBeforeMark = [];
+  const originalDestroy = npcObject.destroy.bind(npcObject);
+  npcObject.destroy = function destroyWithProbe() {
+    destroyedBeforeMark.push(alive.removedNpcMarks.slice());
+    return originalDestroy();
+  };
+
+  alive.instance.applyNpcDamage(npcObject, 10);
+  assertEqual(alive.removedNpcMarks.length, 1, 'markNpcRemoved once');
+  assertEqual(alive.removedNpcMarks[0], npcId, 'marked stable npcId');
+  assert(
+    destroyedBeforeMark[0] && destroyedBeforeMark[0].includes(npcId),
+    'markNpcRemoved happens before visual destroy'
+  );
+  assertEqual(alive.scene.groundItems.length, 1, 'still drops 1 RAW_MEAT');
+  assertEqual(alive.scene.groundItems[0].itemType, 'RAW_MEAT', 'loot type RAW_MEAT');
+
+  alive.instance.applyNpcDamage(npcObject, 10);
+  alive.instance.killNpc(npcObject);
+  assertEqual(alive.removedNpcMarks.length, 1, 'repeat death does not remake mark');
+  assertEqual(alive.scene.groundItems.length, 1, 'no second loot');
+
+  alive.instance.destroy();
+  assertEqual(JSON.stringify(descriptor), descriptorSnapshot, 'descriptor unchanged');
+  assertEqual(JSON.stringify(chunkData), chunkDataSnapshot, 'chunkData unchanged');
+
+  removed.add(npcId);
+  resetWanderCalls();
+  const skipped = createInstance(chunkData, {
+    isNpcRemoved: (id) => removed.has(id)
+  });
+  assertEqual(skipped.instance.npcObjects.length, 0, 'removed npcId creates no visual');
+  assertEqual(skipped.scene.existingCalls.length, 0, 'removed npcId creates no body');
+  assertEqual(skipped.scene.colliderCalls.length, 0, 'removed npcId creates no collider');
+  assertEqual(skipped.scene.tweensList.length, 0, 'removed npcId creates no tween');
+  assertEqual(skipped.scene.timersList.length, 0, 'removed npcId creates no timer');
+  assertEqual(getWanderCallCount(), 0, 'removed npcId does not plan wander');
+  assertEqual(skipped.instance.npcIds.size, 0, 'removed npcId not in runtime npcIds');
+  assertEqual(skipped.created.length, 1, 'TREE still created');
+  assertEqual(skipped.created[0].type, 'TREE', 'TREE lifecycle unchanged');
+  assertEqual(JSON.stringify(descriptor), descriptorSnapshot, 'skip does not mutate descriptor');
+  assertEqual(JSON.stringify(chunkData), chunkDataSnapshot, 'skip does not mutate chunkData');
+  skipped.instance.destroy();
+}
+
+// Unload living NPC does not mark removed
+{
+  resetWanderCalls();
+  const { instance, removedNpcMarks, scene } = createInstance(createChunkData({
+    npcs: [{ type: 'RABBIT', index: 0, localTileX: 2, localTileY: 2 }]
+  }));
+  assertEqual(instance.npcObjects.length, 1, 'living rabbit before unload');
+  instance.destroy();
+  assertEqual(removedNpcMarks.length, 0, 'unload living NPC does not mark removed');
+  assertEqual(scene.groundItems.length, 0, 'unload living NPC creates no loot');
+}
+
+// Full export/restore snapshot: killed rabbit stays gone; meat restores; no second meat
+{
+  resetWanderCalls();
+  const removedNpcIds = new Set();
+  const treeDescriptor = { type: 'TREE', localTileX: 2, localTileY: 2, variant: 0 };
+  const descriptor = { type: 'RABBIT', index: 0, localTileX: 6, localTileY: 6 };
+  const chunkData = createChunkData({
+    objects: [treeDescriptor],
+    npcs: [descriptor]
+  });
+  const first = createInstance(chunkData, {
+    isNpcRemoved: (id) => removedNpcIds.has(id),
+    onNpcRemoved: (id) => {
+      if (typeof id === 'string' && id.length > 0) removedNpcIds.add(id);
+    }
+  });
+  const npcId = first.instance.npcObjects[0].getData('npcId');
+  first.instance.applyNpcDamage(first.instance.npcObjects[0], 10);
+  assert(removedNpcIds.has(npcId), 'death adds npcId to owner set');
+  assertEqual(first.scene.groundItems.length, 1, 'first death meat exists');
+
+  const exported = {
+    removedNpcIds: Array.from(removedNpcIds).sort(),
+    groundItems: first.scene.groundItems.map((item) => ({
+      itemType: item.itemType,
+      quantity: item.quantity,
+      x: item.x,
+      y: item.y
+    }))
+  };
+  assertEqual(
+    JSON.stringify(exported.removedNpcIds),
+    JSON.stringify([npcId]),
+    'export contains killed npcId'
+  );
+
+  first.instance.destroy();
+
+  const restoredRemoved = new Set(exported.removedNpcIds);
+  const second = createInstance(chunkData, {
+    isNpcRemoved: (id) => restoredRemoved.has(id)
+  });
+  assertEqual(second.instance.npcObjects.length, 0, 'restored state skips killed rabbit');
+  assertEqual(second.scene.existingCalls.length, 0, 'no body after restore skip');
+  assertEqual(second.scene.tweensList.length, 0, 'no wander after restore skip');
+
+  // Restore meat through existing ground-item API, not via NPC death.
+  exported.groundItems.forEach((item) => {
+    second.scene.groundItemSystem.spawn(item.itemType, item.quantity, item.x, item.y);
+  });
+  assertEqual(second.scene.groundItems.length, 1, 'saved meat restored once');
+  assertEqual(second.scene.groundItems[0].itemType, 'RAW_MEAT', 'restored meat type');
+  second.instance.destroy();
+
+  // Legacy save without removedNpcIds: rabbit still spawns.
+  const legacy = createInstance(chunkData, {
+    isNpcRemoved: (id) => new Set([]).has(id)
+  });
+  assertEqual(legacy.instance.npcObjects.length, 1, 'legacy empty removedNpcIds creates rabbit');
+  legacy.instance.destroy();
 }
 
 console.log('test-npc-visual: ok');

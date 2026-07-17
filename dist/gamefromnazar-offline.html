@@ -706,6 +706,8 @@ class ChunkInstance {
     this.onObjectCreated = options.onObjectCreated;
     this.onObjectDestroyed = options.onObjectDestroyed;
     this.isResourceRemoved = options.isResourceRemoved;
+    this.isNpcRemoved = options.isNpcRemoved;
+    this.onNpcRemoved = options.onNpcRemoved;
     this.destroyed = false;
     this.ground = null;
     this.ownedObjectIds = [];
@@ -1045,6 +1047,15 @@ class ChunkInstance {
     npcObject.setData('dead', true);
     npcObject.setData('hp', 0);
 
+    const npcId = npcObject.getData('npcId');
+    if (
+      typeof npcId === 'string'
+      && npcId.length > 0
+      && typeof this.onNpcRemoved === 'function'
+    ) {
+      this.onNpcRemoved(npcId);
+    }
+
     const deathX = npcObject.x;
     const deathY = npcObject.y;
 
@@ -1055,7 +1066,6 @@ class ChunkInstance {
     const index = this.npcObjects.indexOf(npcObject);
     if (index >= 0) this.npcObjects.splice(index, 1);
 
-    const npcId = npcObject.getData('npcId');
     if (typeof npcId === 'string') this.npcIds.delete(npcId);
 
     npcObject._npcWanderTween = null;
@@ -1177,6 +1187,7 @@ class ChunkInstance {
         descriptor.type,
         descriptor.index
       );
+      if (typeof this.isNpcRemoved === 'function' && this.isNpcRemoved(npcId)) return;
       if (this.npcIds.has(npcId)) return;
 
       this.ensureRabbitPlaceholderTexture();
@@ -1256,6 +1267,8 @@ class ChunkInstance {
     this.onObjectCreated = null;
     this.onObjectDestroyed = null;
     this.isResourceRemoved = null;
+    this.isNpcRemoved = null;
+    this.onNpcRemoved = null;
     this.npcBlockedCells = new Set();
   }
 }
@@ -1309,6 +1322,12 @@ class ChunkManager {
     this.isResourceRemoved = typeof options.isResourceRemoved === 'function'
       ? options.isResourceRemoved
       : null;
+    this.isNpcRemoved = typeof options.isNpcRemoved === 'function'
+      ? options.isNpcRemoved
+      : null;
+    this.onNpcRemoved = typeof options.onNpcRemoved === 'function'
+      ? options.onNpcRemoved
+      : null;
     this.activeRadius = Number.isInteger(options.activeRadius) ? options.activeRadius : 1;
     this.chunks = new Map();
     this.centerChunkX = null;
@@ -1353,7 +1372,9 @@ class ChunkManager {
         blockingGroup: this.blockingGroup,
         onObjectCreated: this.onObjectCreated,
         onObjectDestroyed: this.onObjectDestroyed,
-        isResourceRemoved: this.isResourceRemoved
+        isResourceRemoved: this.isResourceRemoved,
+        isNpcRemoved: this.isNpcRemoved,
+        onNpcRemoved: this.onNpcRemoved
       });
       this.chunks.set(key, instance);
     });
@@ -1392,6 +1413,8 @@ class ChunkManager {
     this.onObjectDestroyed = null;
     this.onChunkSetChanged = null;
     this.isResourceRemoved = null;
+    this.isNpcRemoved = null;
+    this.onNpcRemoved = null;
   }
 }
 
@@ -2718,6 +2741,10 @@ class SaveSystem {
     return unique;
   }
 
+  static normalizeRemovedNpcIds(value) {
+    return SaveSystem.normalizeRemovedResources(value);
+  }
+
   static normalizeState(state) {
     try {
       if (!state || state.version !== VERSION || !Number.isFinite(state.savedAt)) return null;
@@ -2764,6 +2791,7 @@ class SaveSystem {
         return normalized;
       });
       const removedResources = SaveSystem.normalizeRemovedResources(w.removedResources);
+      const removedNpcIds = SaveSystem.normalizeRemovedNpcIds(w.removedNpcIds);
       let worldSeed;
       if (state.worldSeed !== undefined && state.worldSeed !== null) {
         if (typeof state.worldSeed === 'number'
@@ -2782,7 +2810,14 @@ class SaveSystem {
         player: { x: p.x, y: p.y, health: p.health, hunger: p.hunger },
         dayNight,
         inventory: { activeHotbarIndex: inv.activeHotbarIndex, slots },
-        world: { removedObjectIds, groundItems, walls, deadCreatureIds, removedResources } };
+        world: {
+          removedObjectIds,
+          groundItems,
+          walls,
+          deadCreatureIds,
+          removedResources,
+          removedNpcIds
+        } };
       if (worldSeed !== undefined) normalized.worldSeed = worldSeed;
       return normalized;
     } catch { return null; }
@@ -5364,7 +5399,9 @@ class GameScene extends Phaser.Scene {
       onObjectCreated: (runtimeObject) => this.registerChunkWorldObject(runtimeObject),
       onObjectDestroyed: (id) => this.unregisterChunkWorldObject(id),
       onChunkSetChanged: () => this.refreshInteractionTargets(),
-      isResourceRemoved: (id) => this.isSessionResourceRemoved(id)
+      isResourceRemoved: (id) => this.isSessionResourceRemoved(id),
+      isNpcRemoved: (id) => this.isSessionNpcRemoved(id),
+      onNpcRemoved: (id) => this.markSessionNpcRemoved(id)
     });
     this.chunkManager.syncAround(this.player.x, this.player.y);
     this.refreshInteractionTargets();
@@ -5389,17 +5426,30 @@ class GameScene extends Phaser.Scene {
     return this.sessionRemovedResourceIds.has(id);
   }
 
+  markSessionNpcRemoved(id) {
+    if (typeof id !== 'string' || id.length === 0) return;
+    if (!id.startsWith('chunk_') || id.indexOf('_NPC_') === -1) return;
+    this.sessionRemovedNpcIds.add(id);
+  }
+
+  isSessionNpcRemoved(id) {
+    return this.sessionRemovedNpcIds.has(id);
+  }
+
   hydrateSessionRemovedResourcesFromSave() {
     if (!this.saveSystem) {
       this.sessionRemovedResourceIds = new Set();
+      this.sessionRemovedNpcIds = new Set();
       return;
     }
     const loaded = this.saveSystem.load();
     if (!loaded.success || !loaded.state || !loaded.state.world) {
       this.sessionRemovedResourceIds = new Set();
+      this.sessionRemovedNpcIds = new Set();
       return;
     }
     this.applySessionRemovedResources(loaded.state.world.removedResources);
+    this.applySessionRemovedNpcs(loaded.state.world.removedNpcIds);
   }
 
   applySessionRemovedResources(removedResources) {
@@ -5411,6 +5461,11 @@ class GameScene extends Phaser.Scene {
         this.unregisterChunkWorldObject(id);
       }
     });
+  }
+
+  applySessionRemovedNpcs(removedNpcIds) {
+    const normalized = SaveSystem.normalizeRemovedNpcIds(removedNpcIds);
+    this.sessionRemovedNpcIds = new Set(normalized);
   }
 
   unregisterChunkWorldObject(id) {
@@ -5714,6 +5769,7 @@ class GameScene extends Phaser.Scene {
     this.interactionTargets = [];
     this.runtimeWorldObjects = new Map();
     this.sessionRemovedResourceIds = new Set();
+    this.sessionRemovedNpcIds = new Set();
     // Continue must hydrate removed IDs before the first chunk materialization.
     if (this.launchMode === 'continue') {
       this.hydrateSessionRemovedResourcesFromSave();
@@ -6946,6 +7002,9 @@ class GameScene extends Phaser.Scene {
         deadCreatureIds: this.creatureSystem.exportState(),
         removedResources: SaveSystem.normalizeRemovedResources(
           Array.from(this.sessionRemovedResourceIds || [])
+        ),
+        removedNpcIds: SaveSystem.normalizeRemovedNpcIds(
+          Array.from(this.sessionRemovedNpcIds || [])
         )
       } };
     if (this.worldSeed !== undefined && this.worldSeed !== null) {
@@ -7045,6 +7104,7 @@ class GameScene extends Phaser.Scene {
       if (this.chunkManager) this.chunkManager.worldSeed = this.worldSeed;
     }
     this.applySessionRemovedResources(state.world && state.world.removedResources);
+    this.applySessionRemovedNpcs(state.world && state.world.removedNpcIds);
     this.dayNightSystem.importState(state.dayNight);
     this.applyDayNightVisuals(true);
     if (!this.useChunkedWorld) {

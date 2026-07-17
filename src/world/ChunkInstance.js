@@ -8,6 +8,8 @@ class ChunkInstance {
     this.onObjectCreated = options.onObjectCreated;
     this.onObjectDestroyed = options.onObjectDestroyed;
     this.isResourceRemoved = options.isResourceRemoved;
+    this.isNpcRemoved = options.isNpcRemoved;
+    this.onNpcRemoved = options.onNpcRemoved;
     this.destroyed = false;
     this.ground = null;
     this.ownedObjectIds = [];
@@ -347,6 +349,15 @@ class ChunkInstance {
     npcObject.setData('dead', true);
     npcObject.setData('hp', 0);
 
+    const npcId = npcObject.getData('npcId');
+    if (
+      typeof npcId === 'string'
+      && npcId.length > 0
+      && typeof this.onNpcRemoved === 'function'
+    ) {
+      this.onNpcRemoved(npcId);
+    }
+
     const deathX = npcObject.x;
     const deathY = npcObject.y;
 
@@ -357,7 +368,6 @@ class ChunkInstance {
     const index = this.npcObjects.indexOf(npcObject);
     if (index >= 0) this.npcObjects.splice(index, 1);
 
-    const npcId = npcObject.getData('npcId');
     if (typeof npcId === 'string') this.npcIds.delete(npcId);
 
     npcObject._npcWanderTween = null;
@@ -479,6 +489,7 @@ class ChunkInstance {
         descriptor.type,
         descriptor.index
       );
+      if (typeof this.isNpcRemoved === 'function' && this.isNpcRemoved(npcId)) return;
       if (this.npcIds.has(npcId)) return;
 
       this.ensureRabbitPlaceholderTexture();
@@ -558,6 +569,8 @@ class ChunkInstance {
     this.onObjectCreated = null;
     this.onObjectDestroyed = null;
     this.isResourceRemoved = null;
+    this.isNpcRemoved = null;
+    this.onNpcRemoved = null;
     this.npcBlockedCells = new Set();
   }
 }

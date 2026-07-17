@@ -220,7 +220,9 @@ class GameScene extends Phaser.Scene {
       onObjectCreated: (runtimeObject) => this.registerChunkWorldObject(runtimeObject),
       onObjectDestroyed: (id) => this.unregisterChunkWorldObject(id),
       onChunkSetChanged: () => this.refreshInteractionTargets(),
-      isResourceRemoved: (id) => this.isSessionResourceRemoved(id)
+      isResourceRemoved: (id) => this.isSessionResourceRemoved(id),
+      isNpcRemoved: (id) => this.isSessionNpcRemoved(id),
+      onNpcRemoved: (id) => this.markSessionNpcRemoved(id)
     });
     this.chunkManager.syncAround(this.player.x, this.player.y);
     this.refreshInteractionTargets();
@@ -245,17 +247,30 @@ class GameScene extends Phaser.Scene {
     return this.sessionRemovedResourceIds.has(id);
   }
 
+  markSessionNpcRemoved(id) {
+    if (typeof id !== 'string' || id.length === 0) return;
+    if (!id.startsWith('chunk_') || id.indexOf('_NPC_') === -1) return;
+    this.sessionRemovedNpcIds.add(id);
+  }
+
+  isSessionNpcRemoved(id) {
+    return this.sessionRemovedNpcIds.has(id);
+  }
+
   hydrateSessionRemovedResourcesFromSave() {
     if (!this.saveSystem) {
       this.sessionRemovedResourceIds = new Set();
+      this.sessionRemovedNpcIds = new Set();
       return;
     }
     const loaded = this.saveSystem.load();
     if (!loaded.success || !loaded.state || !loaded.state.world) {
       this.sessionRemovedResourceIds = new Set();
+      this.sessionRemovedNpcIds = new Set();
       return;
     }
     this.applySessionRemovedResources(loaded.state.world.removedResources);
+    this.applySessionRemovedNpcs(loaded.state.world.removedNpcIds);
   }
 
   applySessionRemovedResources(removedResources) {
@@ -267,6 +282,11 @@ class GameScene extends Phaser.Scene {
         this.unregisterChunkWorldObject(id);
       }
     });
+  }
+
+  applySessionRemovedNpcs(removedNpcIds) {
+    const normalized = SaveSystem.normalizeRemovedNpcIds(removedNpcIds);
+    this.sessionRemovedNpcIds = new Set(normalized);
   }
 
   unregisterChunkWorldObject(id) {
@@ -570,6 +590,7 @@ class GameScene extends Phaser.Scene {
     this.interactionTargets = [];
     this.runtimeWorldObjects = new Map();
     this.sessionRemovedResourceIds = new Set();
+    this.sessionRemovedNpcIds = new Set();
     // Continue must hydrate removed IDs before the first chunk materialization.
     if (this.launchMode === 'continue') {
       this.hydrateSessionRemovedResourcesFromSave();
@@ -1802,6 +1823,9 @@ class GameScene extends Phaser.Scene {
         deadCreatureIds: this.creatureSystem.exportState(),
         removedResources: SaveSystem.normalizeRemovedResources(
           Array.from(this.sessionRemovedResourceIds || [])
+        ),
+        removedNpcIds: SaveSystem.normalizeRemovedNpcIds(
+          Array.from(this.sessionRemovedNpcIds || [])
         )
       } };
     if (this.worldSeed !== undefined && this.worldSeed !== null) {
@@ -1901,6 +1925,7 @@ class GameScene extends Phaser.Scene {
       if (this.chunkManager) this.chunkManager.worldSeed = this.worldSeed;
     }
     this.applySessionRemovedResources(state.world && state.world.removedResources);
+    this.applySessionRemovedNpcs(state.world && state.world.removedNpcIds);
     this.dayNightSystem.importState(state.dayNight);
     this.applyDayNightVisuals(true);
     if (!this.useChunkedWorld) {

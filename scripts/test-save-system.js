@@ -207,4 +207,80 @@ assertEqual(
   'normalizeRemovedResources helper sorts and filters'
 );
 
+// removedNpcIds normalization
+function normalizedRemovedNpcs(overrides = {}) {
+  const state = createBaseState(overrides);
+  const normalized = SaveSystem.normalizeState(state);
+  assert(normalized !== null, 'expected valid save for removedNpcIds');
+  return normalized.world.removedNpcIds;
+}
+
+assertEqual(
+  JSON.stringify(normalizedRemovedNpcs()),
+  '[]',
+  'missing removedNpcIds becomes []'
+);
+assertEqual(
+  JSON.stringify(normalizedRemovedNpcs({
+    world: { ...createBaseState().world, removedNpcIds: null }
+  })),
+  '[]',
+  'non-array removedNpcIds becomes []'
+);
+
+const oneNpcId = 'chunk_1_-2_NPC_RABBIT_0';
+assertEqual(
+  JSON.stringify(normalizedRemovedNpcs({
+    world: { ...createBaseState().world, removedNpcIds: [oneNpcId] }
+  })),
+  JSON.stringify([oneNpcId]),
+  'single removed npc id preserved'
+);
+
+assertEqual(
+  JSON.stringify(normalizedRemovedNpcs({
+    world: {
+      ...createBaseState().world,
+      removedNpcIds: [oneNpcId, oneNpcId, '', null, 9, 'chunk_2_0_NPC_RABBIT_1']
+    }
+  })),
+  JSON.stringify(['chunk_2_0_NPC_RABBIT_1', oneNpcId].sort()),
+  'removedNpcIds filters duplicates and invalid values'
+);
+
+assertEqual(
+  JSON.stringify(SaveSystem.normalizeRemovedNpcIds([
+    'chunk_2_0_NPC_RABBIT_1',
+    'chunk_0_0_NPC_RABBIT_0',
+    'chunk_0_0_NPC_RABBIT_0',
+    '',
+    5
+  ])),
+  JSON.stringify(['chunk_0_0_NPC_RABBIT_0', 'chunk_2_0_NPC_RABBIT_1']),
+  'normalizeRemovedNpcIds helper sorts and filters'
+);
+
+const mixed = SaveSystem.normalizeState(createBaseState({
+  world: {
+    ...createBaseState().world,
+    removedResources: [oneId],
+    removedNpcIds: [oneNpcId]
+  }
+}));
+assert(mixed !== null, 'mixed resource/npc removed fields normalize');
+assertEqual(
+  JSON.stringify(mixed.world.removedResources),
+  JSON.stringify([oneId]),
+  'resource ids stay in removedResources'
+);
+assertEqual(
+  JSON.stringify(mixed.world.removedNpcIds),
+  JSON.stringify([oneNpcId]),
+  'npc ids stay in removedNpcIds'
+);
+assert(
+  !mixed.world.removedNpcIds.includes(oneId),
+  'TREE id does not appear in removedNpcIds when saved separately'
+);
+
 console.log('test-save-system: ok');
