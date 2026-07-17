@@ -129,6 +129,27 @@ class ChunkGenerator {
       }
     }
 
+    // BUFFALO uses its own deterministic stream so RABBIT/PIG/LLAMA placement stays unchanged.
+    // Rarer than PIG and LLAMA; not guaranteed in every chunk.
+    const buffaloRng = SeededRandom.fromParts(worldSeed, chunkX, chunkY, 'chunk-npcs-buffalo');
+    if (buffaloRng.next() < 0.08) {
+      let placedBuffalo = false;
+      for (let attempt = 0; attempt < 48 && !placedBuffalo; attempt += 1) {
+        const localX = buffaloRng.nextInt(0, chunkSize);
+        const localY = buffaloRng.nextInt(0, chunkSize);
+        const key = `${localX},${localY}`;
+        if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
+        occupied.add(key);
+        npcs.push({
+          type: 'BUFFALO',
+          index: 0,
+          localTileX: localX,
+          localTileY: localY
+        });
+        placedBuffalo = true;
+      }
+    }
+
     return {
       chunkX,
       chunkY,

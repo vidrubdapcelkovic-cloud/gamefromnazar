@@ -144,7 +144,8 @@ assertEqual(
 assert(countType(npcChunkA.npcs, 'RABBIT') <= 1, 'at most one rabbit per chunk');
 assert(countType(npcChunkA.npcs, 'PIG') <= 1, 'at most one pig per chunk');
 assert(countType(npcChunkA.npcs, 'LLAMA') <= 1, 'at most one llama per chunk');
-assert(npcChunkA.npcs.length <= 3, 'at most three npcs per chunk (rabbit + pig + llama)');
+assert(countType(npcChunkA.npcs, 'BUFFALO') <= 1, 'at most one buffalo per chunk');
+assert(npcChunkA.npcs.length <= 4, 'at most four npcs per chunk (rabbit + pig + llama + buffalo)');
 
 let foundWithNpc = null;
 let foundWithoutNpc = null;
@@ -155,7 +156,8 @@ for (let chunkX = -8; chunkX <= 8; chunkX += 1) {
     assert(countType(sample.npcs, 'RABBIT') <= 1, 'rabbit count never exceeds 1');
     assert(countType(sample.npcs, 'PIG') <= 1, 'pig count never exceeds 1');
     assert(countType(sample.npcs, 'LLAMA') <= 1, 'llama count never exceeds 1');
-    assert(sample.npcs.length <= 3, 'npc count never exceeds 3');
+    assert(countType(sample.npcs, 'BUFFALO') <= 1, 'buffalo count never exceeds 1');
+    assert(sample.npcs.length <= 4, 'npc count never exceeds 4');
     const rabbitCount = countType(sample.npcs, 'RABBIT');
     if (rabbitCount === 1 && !foundWithNpc) foundWithNpc = sample;
     if (rabbitCount === 0 && !foundWithoutNpc) foundWithoutNpc = sample;
@@ -210,10 +212,11 @@ assertEqual(new Set(ids).size, ids.length, 'no duplicate npc ids inside chunk');
 
 const negativeChunk = ChunkGenerator.generate(npcSeed, -3, -2);
 assert(Array.isArray(negativeChunk.npcs), 'negative chunk coordinates support npcs array');
-assert(negativeChunk.npcs.length <= 3, 'negative chunk also at most three npcs');
+assert(negativeChunk.npcs.length <= 4, 'negative chunk also at most four npcs');
 assert(countType(negativeChunk.npcs, 'RABBIT') <= 1, 'negative chunk at most one rabbit');
 assert(countType(negativeChunk.npcs, 'PIG') <= 1, 'negative chunk at most one pig');
 assert(countType(negativeChunk.npcs, 'LLAMA') <= 1, 'negative chunk at most one llama');
+assert(countType(negativeChunk.npcs, 'BUFFALO') <= 1, 'negative chunk at most one buffalo');
 
 // TREE/ROCK object stream must remain independent of NPC stream.
 const objectsOnlyA = ChunkGenerator.generate(111, 5, 5).objects;

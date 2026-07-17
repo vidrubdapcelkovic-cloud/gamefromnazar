@@ -110,7 +110,7 @@ const samples = [
 
 samples.forEach((chunk) => {
   assert(Array.isArray(chunk.npcs), 'chunk always has npcs array');
-  assert(chunk.npcs.length <= 3, 'chunk has at most three npcs (rabbit + pig + llama)');
+  assert(chunk.npcs.length <= 4, 'chunk has at most four npcs (rabbit + pig + llama + buffalo)');
   assert(
     chunk.npcs.filter((npc) => npc.type === 'RABBIT').length <= 1,
     'chunk has at most one rabbit'
@@ -123,6 +123,10 @@ samples.forEach((chunk) => {
     chunk.npcs.filter((npc) => npc.type === 'LLAMA').length <= 1,
     'chunk has at most one llama'
   );
+  assert(
+    chunk.npcs.filter((npc) => npc.type === 'BUFFALO').length <= 1,
+    'chunk has at most one buffalo'
+  );
   const occupied = new Set();
   chunk.objects.forEach((object) => {
     assert(object.localTileX >= 0 && object.localTileX <= 15, 'object localX');
@@ -133,8 +137,8 @@ samples.forEach((chunk) => {
   });
   chunk.npcs.forEach((npc) => {
     assert(
-      npc.type === 'RABBIT' || npc.type === 'PIG' || npc.type === 'LLAMA',
-      'npc type is peaceful (RABBIT, PIG or LLAMA)'
+      npc.type === 'RABBIT' || npc.type === 'PIG' || npc.type === 'LLAMA' || npc.type === 'BUFFALO',
+      'npc type is peaceful (RABBIT, PIG, LLAMA or BUFFALO)'
     );
     assert(Number.isInteger(npc.index) && npc.index >= 0, 'npc index');
     assert(npc.localTileX >= 0 && npc.localTileX <= 15, 'npc localX');

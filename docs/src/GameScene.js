@@ -61,6 +61,14 @@ class GameScene extends Phaser.Scene {
     ) {
       this.load.image('llama-texture', LLAMA_TEXTURE_DATA_URL);
     }
+    if (
+      typeof BUFFALO_TEXTURE_DATA_URL === 'string'
+      && BUFFALO_TEXTURE_DATA_URL.length > 0
+      && this.textures
+      && !this.textures.exists('buffalo-texture')
+    ) {
+      this.load.image('buffalo-texture', BUFFALO_TEXTURE_DATA_URL);
+    }
   }
 
   create() {

@@ -15,6 +15,7 @@ const requiredRelativePaths = [
   'src/data/PassiveNpcConfig.js',
   'src/generated/PigTextureData.js',
   'src/generated/LlamaTextureData.js',
+  'src/generated/BuffaloTextureData.js',
   'src/world/WorldGrid.js',
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
@@ -95,6 +96,12 @@ const llamaTextureModuleSize = generateEmbeddedTextureModule(
   'LLAMA_TEXTURE_DATA_URL',
   'LLAMA'
 );
+const buffaloTextureModuleSize = generateEmbeddedTextureModule(
+  'assets/generated/buffalo.png',
+  'src/generated/BuffaloTextureData.js',
+  'BUFFALO_TEXTURE_DATA_URL',
+  'BUFFALO'
+);
 
 requiredRelativePaths.forEach(requireFile);
 
@@ -110,6 +117,7 @@ const combatConfig = fs.readFileSync(requireFile('src/data/CombatConfig.js'), 'u
 const passiveNpcConfig = fs.readFileSync(requireFile('src/data/PassiveNpcConfig.js'), 'utf8');
 const pigTextureData = fs.readFileSync(requireFile('src/generated/PigTextureData.js'), 'utf8');
 const llamaTextureData = fs.readFileSync(requireFile('src/generated/LlamaTextureData.js'), 'utf8');
+const buffaloTextureData = fs.readFileSync(requireFile('src/generated/BuffaloTextureData.js'), 'utf8');
 const worldGrid = fs.readFileSync(requireFile('src/world/WorldGrid.js'), 'utf8');
 const chunkMath = fs.readFileSync(requireFile('src/world/ChunkMath.js'), 'utf8');
 const seededRandom = fs.readFileSync(requireFile('src/world/SeededRandom.js'), 'utf8');
@@ -177,6 +185,7 @@ ${safeScript(combatConfig)}
 ${safeScript(passiveNpcConfig)}
 ${safeScript(pigTextureData)}
 ${safeScript(llamaTextureData)}
+${safeScript(buffaloTextureData)}
 ${safeScript(worldGrid)}
 ${safeScript(chunkMath)}
 ${safeScript(seededRandom)}
@@ -235,6 +244,7 @@ const pagesHtml = `<!doctype html>
     <script src="./src/data/PassiveNpcConfig.js"></script>
     <script src="./src/generated/PigTextureData.js"></script>
     <script src="./src/generated/LlamaTextureData.js"></script>
+    <script src="./src/generated/BuffaloTextureData.js"></script>
     <script src="./src/world/WorldGrid.js"></script>
     <script src="./src/world/ChunkMath.js"></script>
     <script src="./src/world/SeededRandom.js"></script>
@@ -306,6 +316,7 @@ fs.copyFileSync(requireFile('src/data/CombatConfig.js'), path.join(docsDataDirec
 fs.copyFileSync(requireFile('src/data/PassiveNpcConfig.js'), path.join(docsDataDirectory, 'PassiveNpcConfig.js'));
 fs.copyFileSync(requireFile('src/generated/PigTextureData.js'), path.join(docsGeneratedDirectory, 'PigTextureData.js'));
 fs.copyFileSync(requireFile('src/generated/LlamaTextureData.js'), path.join(docsGeneratedDirectory, 'LlamaTextureData.js'));
+fs.copyFileSync(requireFile('src/generated/BuffaloTextureData.js'), path.join(docsGeneratedDirectory, 'BuffaloTextureData.js'));
 fs.copyFileSync(requireFile('src/world/WorldGrid.js'), path.join(docsWorldDirectory, 'WorldGrid.js'));
 fs.copyFileSync(requireFile('src/world/ChunkMath.js'), path.join(docsWorldDirectory, 'ChunkMath.js'));
 fs.copyFileSync(requireFile('src/world/SeededRandom.js'), path.join(docsWorldDirectory, 'SeededRandom.js'));
@@ -347,6 +358,7 @@ assetDirectories.forEach((directoryPath) => {
 
 console.log(`PIG texture (встроен): src/generated/PigTextureData.js (${pigTextureModuleSize} байт)`);
 console.log(`LLAMA texture (встроен): src/generated/LlamaTextureData.js (${llamaTextureModuleSize} байт)`);
+console.log(`BUFFALO texture (встроен): src/generated/BuffaloTextureData.js (${buffaloTextureModuleSize} байт)`);
 console.log(`Автономная версия: ${autonomousPath} (${autonomousSize} байт)`);
 console.log(`GitHub Pages: ${pagesIndexPath} (${pagesIndexSize} байт)`);
 console.log(`Phaser: ${path.join(docsLibDirectory, 'phaser.min.js')} (${fs.statSync(path.join(docsLibDirectory, 'phaser.min.js')).size} байт)`);

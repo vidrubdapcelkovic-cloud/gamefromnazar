@@ -1262,4 +1262,61 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
   instance.destroy();
 }
 
+// BUFFALO: runtime creation, body from config, damage/death/loot; others unchanged
+{
+  resetWanderCalls();
+  const buffaloConfig = getPassiveNpcConfig('BUFFALO');
+  const pigConfig = getPassiveNpcConfig('PIG');
+  const llamaConfig = getPassiveNpcConfig('LLAMA');
+  const rabbitConfig = getPassiveNpcConfig('RABBIT');
+  assert(buffaloConfig, 'BUFFALO config exists');
+  assertEqual(pigConfig.renderWidth, 87, 'PIG render unchanged');
+  assertEqual(llamaConfig.renderWidth, 67, 'LLAMA render unchanged');
+  assertEqual(rabbitConfig.maxHp, 6, 'RABBIT maxHp unchanged');
+
+  const { instance, scene, removedNpcMarks } = createInstance(createChunkData({
+    npcs: [{ type: 'BUFFALO', index: 0, localTileX: 7, localTileY: 7 }]
+  }));
+  const npcObject = instance.npcObjects[0];
+  const buffaloId = buildChunkNpcId(1, -2, 'BUFFALO', 0);
+
+  assertEqual(npcObject.textureKey, 'buffalo-texture', 'buffalo uses buffalo-texture');
+  assertEqual(npcObject.getData('npcId'), buffaloId, 'buffalo stable id');
+  assertEqual(npcObject.getData('maxHp'), 35, 'buffalo maxHp 35');
+  assertEqual(npcObject.getData('hp'), 35, 'buffalo hp 35');
+  assertEqual(npcObject.displayWidth, buffaloConfig.renderWidth, 'buffalo display width');
+  assertEqual(npcObject.displayHeight, buffaloConfig.renderHeight, 'buffalo display height');
+  assertEqual(npcObject.body.width, buffaloConfig.bodyWidth, 'buffalo body width');
+  assertEqual(npcObject.body.height, buffaloConfig.bodyHeight, 'buffalo body height');
+  assertEqual(npcObject.body.offset.x, buffaloConfig.bodyOffsetX, 'buffalo body offsetX');
+  assertEqual(npcObject.body.offset.y, buffaloConfig.bodyOffsetY, 'buffalo body offsetY');
+  assertEqual(scene.colliderCalls.length, 1, 'buffalo collider');
+  assertEqual(scene.colliderCalls[0].callback, null, 'buffalo touch deals no damage');
+  assertEqual(scene.tweensList[0].config.duration, 900, 'buffalo tween 900');
+  scene.tweensList[0].complete();
+  assertEqual(scene.timersList[0].delay, 1600, 'buffalo pause 1600');
+
+  const deathX = npcObject.x;
+  const deathY = npcObject.y;
+  assertEqual(instance.applyNpcDamage(npcObject, 10).health, 25, 'buffalo 35->25');
+  assertEqual(instance.applyNpcDamage(npcObject, 10).health, 15, 'buffalo 25->15');
+  assertEqual(instance.applyNpcDamage(npcObject, 10).health, 5, 'buffalo 15->5');
+  assertEqual(instance.applyNpcDamage(npcObject, 10).died, true, 'buffalo dies fourth fist');
+  assertEqual(removedNpcMarks[0], buffaloId, 'buffalo marked removed');
+  assertEqual(scene.groundItems.length, 1, 'buffalo one loot stack');
+  assertEqual(scene.groundItems[0].quantity, 5, 'buffalo loot qty 5');
+  assertEqual(scene.groundItems[0].itemType, 'RAW_MEAT', 'buffalo loot RAW_MEAT');
+  assertEqual(scene.groundItems[0].x, deathX, 'buffalo loot x');
+  assertEqual(scene.groundItems[0].y, deathY, 'buffalo loot y');
+
+  const removed = new Set([buffaloId]);
+  resetWanderCalls();
+  const skipped = createInstance(createChunkData({
+    npcs: [{ type: 'BUFFALO', index: 0, localTileX: 7, localTileY: 7 }]
+  }), { isNpcRemoved: (id) => removed.has(id) });
+  assertEqual(skipped.instance.npcObjects.length, 0, 'removed buffalo creates no visual');
+  instance.destroy();
+  skipped.instance.destroy();
+}
+
 console.log('test-npc-visual: ok');

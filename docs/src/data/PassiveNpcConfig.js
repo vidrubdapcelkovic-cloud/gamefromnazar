@@ -64,6 +64,24 @@ const PassiveNpcConfig = Object.freeze({
     // Slightly slower than PIG.
     wanderTweenDuration: 750,
     wanderPauseDuration: 1300
+  }),
+  BUFFALO: Object.freeze({
+    type: 'BUFFALO',
+    textureKey: 'buffalo-texture',
+    maxHp: 35,
+    lootType: 'RAW_MEAT',
+    lootQuantity: 5,
+    // Prepared texture 1018x821 (content 986x789 + 16px padding, aspect ~1.25).
+    // Visible content width ~115 world px; full display includes transparent padding.
+    renderWidth: 119,
+    renderHeight: 96,
+    // Body covers the lower torso / upper legs in texture pixels.
+    bodyWidth: 679,
+    bodyHeight: 341,
+    bodyOffsetX: 134,
+    bodyOffsetY: 449,
+    wanderTweenDuration: 900,
+    wanderPauseDuration: 1600
   })
 });
 
