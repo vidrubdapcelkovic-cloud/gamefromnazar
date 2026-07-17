@@ -108,6 +108,27 @@ class ChunkGenerator {
       }
     }
 
+    // LLAMA uses its own deterministic stream so RABBIT/PIG placement stays unchanged.
+    // Slightly rarer than PIG; not guaranteed in every chunk.
+    const llamaRng = SeededRandom.fromParts(worldSeed, chunkX, chunkY, 'chunk-npcs-llama');
+    if (llamaRng.next() < 0.12) {
+      let placedLlama = false;
+      for (let attempt = 0; attempt < 48 && !placedLlama; attempt += 1) {
+        const localX = llamaRng.nextInt(0, chunkSize);
+        const localY = llamaRng.nextInt(0, chunkSize);
+        const key = `${localX},${localY}`;
+        if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
+        occupied.add(key);
+        npcs.push({
+          type: 'LLAMA',
+          index: 0,
+          localTileX: localX,
+          localTileY: localY
+        });
+        placedLlama = true;
+      }
+    }
+
     return {
       chunkX,
       chunkY,

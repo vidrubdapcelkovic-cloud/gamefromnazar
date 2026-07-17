@@ -45,6 +45,25 @@ const PassiveNpcConfig = Object.freeze({
     // Slightly slower and longer pause than the rabbit.
     wanderTweenDuration: 700,
     wanderPauseDuration: 1200
+  }),
+  LLAMA: Object.freeze({
+    type: 'LLAMA',
+    textureKey: 'llama-texture',
+    maxHp: 20,
+    lootType: 'RAW_MEAT',
+    lootQuantity: 3,
+    // Prepared texture 850x1179 (content 818x1147 + 16px padding, aspect ~0.713).
+    // Visible content height ~90 world px; full display includes transparent padding.
+    renderWidth: 67,
+    renderHeight: 93,
+    // Body covers the lower torso / upper legs (bottom ~26% of content) in texture pixels.
+    bodyWidth: 728,
+    bodyHeight: 299,
+    bodyOffsetX: 61,
+    bodyOffsetY: 864,
+    // Slightly slower than PIG.
+    wanderTweenDuration: 750,
+    wanderPauseDuration: 1300
   })
 });
 

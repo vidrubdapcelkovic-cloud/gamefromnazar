@@ -42,9 +42,9 @@ class GameScene extends Phaser.Scene {
   }
 
   preload() {
-    // The PIG sprite is embedded as a build-time data URL (see build.js) and
-    // registered once here so the compact production texture is ready before the
-    // first chunk materializes in create(). No external PNG is referenced.
+    // Passive NPC sprites are embedded as build-time data URLs (see build.js) and
+    // registered once here so production textures are ready before the first
+    // chunk materializes in create(). No external PNG is referenced.
     if (
       typeof PIG_TEXTURE_DATA_URL === 'string'
       && PIG_TEXTURE_DATA_URL.length > 0
@@ -52,6 +52,14 @@ class GameScene extends Phaser.Scene {
       && !this.textures.exists('pig-texture')
     ) {
       this.load.image('pig-texture', PIG_TEXTURE_DATA_URL);
+    }
+    if (
+      typeof LLAMA_TEXTURE_DATA_URL === 'string'
+      && LLAMA_TEXTURE_DATA_URL.length > 0
+      && this.textures
+      && !this.textures.exists('llama-texture')
+    ) {
+      this.load.image('llama-texture', LLAMA_TEXTURE_DATA_URL);
     }
   }
 

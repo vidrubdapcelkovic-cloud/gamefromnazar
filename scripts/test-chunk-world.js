@@ -110,7 +110,7 @@ const samples = [
 
 samples.forEach((chunk) => {
   assert(Array.isArray(chunk.npcs), 'chunk always has npcs array');
-  assert(chunk.npcs.length <= 2, 'chunk has at most two npcs (rabbit + pig)');
+  assert(chunk.npcs.length <= 3, 'chunk has at most three npcs (rabbit + pig + llama)');
   assert(
     chunk.npcs.filter((npc) => npc.type === 'RABBIT').length <= 1,
     'chunk has at most one rabbit'
@@ -118,6 +118,10 @@ samples.forEach((chunk) => {
   assert(
     chunk.npcs.filter((npc) => npc.type === 'PIG').length <= 1,
     'chunk has at most one pig'
+  );
+  assert(
+    chunk.npcs.filter((npc) => npc.type === 'LLAMA').length <= 1,
+    'chunk has at most one llama'
   );
   const occupied = new Set();
   chunk.objects.forEach((object) => {
@@ -128,7 +132,10 @@ samples.forEach((chunk) => {
     occupied.add(key);
   });
   chunk.npcs.forEach((npc) => {
-    assert(npc.type === 'RABBIT' || npc.type === 'PIG', 'npc type is peaceful (RABBIT or PIG)');
+    assert(
+      npc.type === 'RABBIT' || npc.type === 'PIG' || npc.type === 'LLAMA',
+      'npc type is peaceful (RABBIT, PIG or LLAMA)'
+    );
     assert(Number.isInteger(npc.index) && npc.index >= 0, 'npc index');
     assert(npc.localTileX >= 0 && npc.localTileX <= 15, 'npc localX');
     assert(npc.localTileY >= 0 && npc.localTileY <= 15, 'npc localY');

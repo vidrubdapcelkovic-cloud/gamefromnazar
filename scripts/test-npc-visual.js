@@ -1216,4 +1216,50 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
   instance.destroy();
 }
 
+// LLAMA: runtime creation, body from config, damage/death/loot; PIG/RABBIT unchanged
+{
+  resetWanderCalls();
+  const llamaConfig = getPassiveNpcConfig('LLAMA');
+  const pigConfig = getPassiveNpcConfig('PIG');
+  const rabbitConfig = getPassiveNpcConfig('RABBIT');
+  assert(llamaConfig, 'LLAMA config exists');
+  assertEqual(pigConfig.renderWidth, 87, 'PIG render unchanged');
+  assertEqual(pigConfig.bodyOffsetX, 171, 'PIG body offset unchanged');
+  assertEqual(rabbitConfig.maxHp, 6, 'RABBIT maxHp unchanged');
+
+  const { instance, scene, removedNpcMarks } = createInstance(createChunkData({
+    npcs: [{ type: 'LLAMA', index: 0, localTileX: 7, localTileY: 7 }]
+  }));
+  const npcObject = instance.npcObjects[0];
+  const llamaId = buildChunkNpcId(1, -2, 'LLAMA', 0);
+
+  assertEqual(npcObject.textureKey, 'llama-texture', 'llama uses llama-texture');
+  assertEqual(npcObject.getData('npcId'), llamaId, 'llama stable id');
+  assertEqual(npcObject.getData('maxHp'), 20, 'llama maxHp 20');
+  assertEqual(npcObject.getData('hp'), 20, 'llama hp 20');
+  assertEqual(npcObject.displayWidth, llamaConfig.renderWidth, 'llama display width');
+  assertEqual(npcObject.displayHeight, llamaConfig.renderHeight, 'llama display height');
+  assertEqual(npcObject.body.width, llamaConfig.bodyWidth, 'llama body width');
+  assertEqual(npcObject.body.height, llamaConfig.bodyHeight, 'llama body height');
+  assertEqual(npcObject.body.offset.x, llamaConfig.bodyOffsetX, 'llama body offsetX');
+  assertEqual(npcObject.body.offset.y, llamaConfig.bodyOffsetY, 'llama body offsetY');
+  assertEqual(scene.colliderCalls.length, 1, 'llama collider');
+  assertEqual(scene.colliderCalls[0].callback, null, 'llama touch deals no damage');
+  assertEqual(scene.tweensList[0].config.duration, 750, 'llama tween 750');
+  scene.tweensList[0].complete();
+  assertEqual(scene.timersList[0].delay, 1300, 'llama pause 1300');
+
+  const deathX = npcObject.x;
+  const deathY = npcObject.y;
+  assertEqual(instance.applyNpcDamage(npcObject, 10).health, 10, 'llama 20->10');
+  assertEqual(instance.applyNpcDamage(npcObject, 10).died, true, 'llama dies second fist');
+  assertEqual(removedNpcMarks[0], llamaId, 'llama marked removed');
+  assertEqual(scene.groundItems.length, 1, 'llama one loot stack');
+  assertEqual(scene.groundItems[0].quantity, 3, 'llama loot qty 3');
+  assertEqual(scene.groundItems[0].itemType, 'RAW_MEAT', 'llama loot RAW_MEAT');
+  assertEqual(scene.groundItems[0].x, deathX, 'llama loot x');
+  assertEqual(scene.groundItems[0].y, deathY, 'llama loot y');
+  instance.destroy();
+}
+
 console.log('test-npc-visual: ok');
