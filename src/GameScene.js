@@ -41,6 +41,20 @@ class GameScene extends Phaser.Scene {
     this.launchMode = data && (data.mode === 'new' || data.mode === 'continue') ? data.mode : null;
   }
 
+  preload() {
+    // The PIG sprite is embedded as a build-time data URL (see build.js) and
+    // registered once here so the compact production texture is ready before the
+    // first chunk materializes in create(). No external PNG is referenced.
+    if (
+      typeof PIG_TEXTURE_DATA_URL === 'string'
+      && PIG_TEXTURE_DATA_URL.length > 0
+      && this.textures
+      && !this.textures.exists('pig-texture')
+    ) {
+      this.load.image('pig-texture', PIG_TEXTURE_DATA_URL);
+    }
+  }
+
   create() {
     if (this.activeSlotId === null || this.launchMode === null) {
       this.scene.start('MenuScene', { message: 'Не удалось начать игру: слот или режим не выбран.' });

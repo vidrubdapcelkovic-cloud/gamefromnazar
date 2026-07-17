@@ -110,7 +110,15 @@ const samples = [
 
 samples.forEach((chunk) => {
   assert(Array.isArray(chunk.npcs), 'chunk always has npcs array');
-  assert(chunk.npcs.length <= 1, 'chunk has at most one npc');
+  assert(chunk.npcs.length <= 2, 'chunk has at most two npcs (rabbit + pig)');
+  assert(
+    chunk.npcs.filter((npc) => npc.type === 'RABBIT').length <= 1,
+    'chunk has at most one rabbit'
+  );
+  assert(
+    chunk.npcs.filter((npc) => npc.type === 'PIG').length <= 1,
+    'chunk has at most one pig'
+  );
   const occupied = new Set();
   chunk.objects.forEach((object) => {
     assert(object.localTileX >= 0 && object.localTileX <= 15, 'object localX');
@@ -120,12 +128,12 @@ samples.forEach((chunk) => {
     occupied.add(key);
   });
   chunk.npcs.forEach((npc) => {
-    assertEqual(npc.type, 'RABBIT', 'npc type');
+    assert(npc.type === 'RABBIT' || npc.type === 'PIG', 'npc type is peaceful (RABBIT or PIG)');
     assert(Number.isInteger(npc.index) && npc.index >= 0, 'npc index');
     assert(npc.localTileX >= 0 && npc.localTileX <= 15, 'npc localX');
     assert(npc.localTileY >= 0 && npc.localTileY <= 15, 'npc localY');
     const key = `${npc.localTileX},${npc.localTileY}`;
-    assert(!occupied.has(key), 'npc does not overlap TREE/ROCK');
+    assert(!occupied.has(key), 'npc does not overlap TREE/ROCK or another npc');
     occupied.add(key);
   });
 });

@@ -236,8 +236,9 @@ class ChunkInstance {
     }
   }
 
-  setupNpcPhysicsBody(npcObject) {
+  setupNpcPhysicsBody(npcObject, config) {
     if (!npcObject || npcObject.body) return;
+    if (!config) return;
     if (!this.scene || !this.scene.physics || !this.scene.physics.add) return;
     if (typeof this.scene.physics.add.existing !== 'function') return;
 
@@ -254,12 +255,12 @@ class ChunkInstance {
     // Keep Arcade body following the tweened image instead of driving velocity.
     body.moves = false;
 
-    const frameWidth = Math.max(1, Math.round(npcObject.displayWidth || npcObject.width || 28));
-    const frameHeight = Math.max(1, Math.round(npcObject.displayHeight || npcObject.height || 28));
-    const bodyWidth = Math.max(8, Math.round(frameWidth * 0.5));
-    const bodyHeight = Math.max(6, Math.round(frameHeight * 0.36));
-    const offsetX = Math.round((frameWidth - bodyWidth) / 2);
-    const offsetY = Math.round(frameHeight - bodyHeight - Math.max(2, Math.round(frameHeight * 0.08)));
+    // Body geometry is expressed in texture (source) pixels; Phaser scales it by
+    // the sprite scale, so it stays correct regardless of the display size.
+    const bodyWidth = Math.max(1, Math.round(config.bodyWidth));
+    const bodyHeight = Math.max(1, Math.round(config.bodyHeight));
+    const offsetX = Math.round(config.bodyOffsetX);
+    const offsetY = Math.round(config.bodyOffsetY);
 
     if (typeof body.setSize === 'function') body.setSize(bodyWidth, bodyHeight);
     if (typeof body.setOffset === 'function') body.setOffset(offsetX, offsetY);
@@ -288,7 +289,7 @@ class ChunkInstance {
 
     this.npcObjects.forEach((npcObject) => {
       if (!npcObject || npcObject.destroyed || npcObject.getData('dead')) return;
-      if (npcObject.getData('npcType') !== 'RABBIT') return;
+      if (!getPassiveNpcConfig(npcObject.getData('npcType'))) return;
 
       const dx = npcObject.x - x;
       const dy = npcObject.y - y;
@@ -319,7 +320,7 @@ class ChunkInstance {
         : 0;
       return { damage: 0, health: leftover, died: false };
     }
-    if (npcObject.getData('npcType') !== 'RABBIT') {
+    if (!getPassiveNpcConfig(npcObject.getData('npcType'))) {
       return { damage: 0, health: 0, died: false };
     }
     if (npcObject.destroyed || npcObject.getData('dead')) {
@@ -360,10 +361,13 @@ class ChunkInstance {
 
     const deathX = npcObject.x;
     const deathY = npcObject.y;
+    const config = getPassiveNpcConfig(npcObject.getData('npcType'));
 
     this.stopNpcWander(npcObject);
     this.clearNpcPlayerCollider(npcObject);
-    this.dropNpcLoot(deathX, deathY);
+    if (config) {
+      this.dropNpcLoot(config.lootType, config.lootQuantity, deathX, deathY);
+    }
 
     const index = this.npcObjects.indexOf(npcObject);
     if (index >= 0) this.npcObjects.splice(index, 1);
@@ -380,11 +384,14 @@ class ChunkInstance {
     return true;
   }
 
-  dropNpcLoot(deathX, deathY) {
+  dropNpcLoot(lootType, lootQuantity, deathX, deathY) {
+    if (typeof lootType !== 'string' || lootType.length === 0) return null;
+    if (!Number.isInteger(lootQuantity) || lootQuantity <= 0) return null;
     if (!Number.isFinite(deathX) || !Number.isFinite(deathY)) return null;
     if (!this.scene || !this.scene.groundItemSystem) return null;
     if (typeof this.scene.groundItemSystem.spawn !== 'function') return null;
-    return this.scene.groundItemSystem.spawn('RAW_MEAT', 1, deathX, deathY);
+    // Single stack: one spawn call carries the full quantity.
+    return this.scene.groundItemSystem.spawn(lootType, lootQuantity, deathX, deathY);
   }
 
   startNpcWander(npcObject) {
@@ -438,11 +445,15 @@ class ChunkInstance {
     if (!this.scene || !this.scene.tweens || typeof this.scene.tweens.add !== 'function') return;
 
     this.clearNpcWanderTween(npcObject);
+    const config = getPassiveNpcConfig(npcObject.getData('npcType'));
+    const duration = config && Number.isFinite(config.wanderTweenDuration)
+      ? config.wanderTweenDuration
+      : 450;
     const tween = this.scene.tweens.add({
       targets: npcObject,
       x: worldPos.x,
       y: worldPos.y,
-      duration: 450,
+      duration,
       ease: 'Linear',
       onComplete: () => {
         if (!this.isNpcWanderCallbackValid(npcObject, 'tween', tween)) return;
@@ -466,7 +477,11 @@ class ChunkInstance {
     if (!this.scene || !this.scene.time || typeof this.scene.time.delayedCall !== 'function') return;
 
     this.clearNpcWanderTimer(npcObject);
-    const timer = this.scene.time.delayedCall(900, () => {
+    const config = getPassiveNpcConfig(npcObject.getData('npcType'));
+    const pauseDuration = config && Number.isFinite(config.wanderPauseDuration)
+      ? config.wanderPauseDuration
+      : 900;
+    const timer = this.scene.time.delayedCall(pauseDuration, () => {
       if (!this.isNpcWanderCallbackValid(npcObject, 'timer', timer)) return;
       npcObject._npcWanderTimer = null;
       this.runNpcWanderAttempt(npcObject);
@@ -479,7 +494,9 @@ class ChunkInstance {
     const npcs = Array.isArray(chunkData && chunkData.npcs) ? chunkData.npcs : [];
     this.npcBlockedCells = this.buildNpcBlockedCells(chunkData);
     npcs.forEach((descriptor) => {
-      if (!descriptor || descriptor.type !== 'RABBIT') return;
+      if (!descriptor) return;
+      const config = getPassiveNpcConfig(descriptor.type);
+      if (!config) return;
       if (!Number.isInteger(descriptor.index) || descriptor.index < 0) return;
       if (!Number.isInteger(descriptor.localTileX) || !Number.isInteger(descriptor.localTileY)) return;
 
@@ -492,7 +509,11 @@ class ChunkInstance {
       if (typeof this.isNpcRemoved === 'function' && this.isNpcRemoved(npcId)) return;
       if (this.npcIds.has(npcId)) return;
 
-      this.ensureRabbitPlaceholderTexture();
+      // The rabbit placeholder is generated on demand; other NPC textures are
+      // loaded once during preload (see GameScene).
+      if (config.textureKey === 'rabbit-placeholder') {
+        this.ensureRabbitPlaceholderTexture();
+      }
       const position = ChunkMath.localTileCenterWorld(
         this.chunkX,
         this.chunkY,
@@ -500,7 +521,12 @@ class ChunkInstance {
         descriptor.localTileY
       );
       // Image is tweened; Arcade body is immovable and follows the visual.
-      const npcObject = this.scene.add.image(position.x, position.y, 'rabbit-placeholder');
+      const npcObject = this.scene.add.image(position.x, position.y, config.textureKey);
+      if (typeof npcObject.setDisplaySize === 'function') {
+        // Set display size before the physics body is created so Arcade captures
+        // the correct sprite scale for its source-pixel body geometry.
+        npcObject.setDisplaySize(config.renderWidth, config.renderHeight);
+      }
       npcObject.setDataEnabled();
       npcObject.setData('npcId', npcId);
       npcObject.setData('npcType', descriptor.type);
@@ -512,13 +538,13 @@ class ChunkInstance {
       npcObject.setData('wanderTargetLocalTileY', null);
       npcObject.setData('wanderStarted', false);
       npcObject.setData('wanderStopped', false);
-      npcObject.setData('maxHp', 6);
-      npcObject.setData('hp', 6);
+      npcObject.setData('maxHp', config.maxHp);
+      npcObject.setData('hp', config.maxHp);
       npcObject.setData('dead', false);
       npcObject._npcWanderTween = null;
       npcObject._npcWanderTimer = null;
       npcObject._npcPlayerCollider = null;
-      this.setupNpcPhysicsBody(npcObject);
+      this.setupNpcPhysicsBody(npcObject, config);
       this.setupNpcPlayerCollider(npcObject);
       if (typeof this.scene.updateWorldDepth === 'function') {
         this.scene.updateWorldDepth(npcObject);

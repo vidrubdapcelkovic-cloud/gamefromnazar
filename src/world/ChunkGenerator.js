@@ -86,6 +86,28 @@ class ChunkGenerator {
       }
     }
 
+    // PIG uses its own deterministic stream so the RABBIT chance/placement above is
+    // untouched. PIG appears about 2.5x rarer than RABBIT and is not guaranteed.
+    const pigRng = SeededRandom.fromParts(worldSeed, chunkX, chunkY, 'chunk-npcs-pig');
+    if (pigRng.next() < 0.14) {
+      let placedPig = false;
+      for (let attempt = 0; attempt < 48 && !placedPig; attempt += 1) {
+        const localX = pigRng.nextInt(0, chunkSize);
+        const localY = pigRng.nextInt(0, chunkSize);
+        const key = `${localX},${localY}`;
+        // occupied already contains TREE/ROCK cells and any RABBIT tile.
+        if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
+        occupied.add(key);
+        npcs.push({
+          type: 'PIG',
+          index: 0,
+          localTileX: localX,
+          localTileY: localY
+        });
+        placedPig = true;
+      }
+    }
+
     return {
       chunkX,
       chunkY,

@@ -41,6 +41,13 @@ function createImageMock(x, y, textureKey) {
     setData(key, value) { data[key] = value; return this; },
     getData(key) { return data[key]; },
     setDepth() { return this; },
+    setDisplaySize(displayWidth, displayHeight) {
+      this.displayWidth = displayWidth;
+      this.displayHeight = displayHeight;
+      this.scaleX = this.width ? displayWidth / this.width : 1;
+      this.scaleY = this.height ? displayHeight / this.height : 1;
+      return this;
+    },
     getBounds() {
       return { centerX: this.x, bottom: this.y + 14 };
     },
@@ -266,6 +273,7 @@ function createBlockingGroupMock() {
 }
 
 const bundle = [
+  'src/data/PassiveNpcConfig.js',
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
   'src/world/ChunkGenerator.js',
@@ -306,6 +314,8 @@ vm.runInContext(
 };
 ;exports.ChunkInstance = ChunkInstance;
 ;exports.ChunkMath = ChunkMath;
+;exports.PassiveNpcConfig = PassiveNpcConfig;
+;exports.getPassiveNpcConfig = getPassiveNpcConfig;
 ;exports.buildChunkNpcId = buildChunkNpcId;
 ;exports.chooseNpcWanderTarget = __originalChooseNpcWanderTarget;
 ;exports.buildNpcWanderRandomValue = buildNpcWanderRandomValue;
@@ -322,6 +332,8 @@ vm.runInContext(
 const {
   ChunkInstance,
   ChunkMath,
+  PassiveNpcConfig,
+  getPassiveNpcConfig,
   buildChunkNpcId,
   chooseNpcWanderTarget,
   buildNpcWanderRandomValue,
@@ -862,8 +874,12 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
     'collider is created without callback args'
   );
   assert(
-    /groundItemSystem\.spawn\(\s*'RAW_MEAT'\s*,\s*1/.test(chunkInstanceSource),
-    'death drops RAW_MEAT x1 via groundItemSystem'
+    /groundItemSystem\.spawn\(\s*lootType\s*,\s*lootQuantity/.test(chunkInstanceSource),
+    'death drops config-driven loot via a single groundItemSystem.spawn call'
+  );
+  assert(
+    (chunkInstanceSource.match(/groundItemSystem\.spawn\(/g) || []).length === 1,
+    'only one groundItemSystem.spawn call in ChunkInstance (single stack)'
   );
   assert(
     !/inventoryModel\.addItem/.test(chunkInstanceSource),
@@ -1016,6 +1032,188 @@ function expectedRabbitBody(frameWidth = 28, frameHeight = 28) {
   legacy.instance.destroy();
 }
 
-console.log('test-npc-visual: ok');
+// PIG: runtime creation, physics body from config, wander timings, damage/death/loot
+{
+  resetWanderCalls();
+  const pigConfig = getPassiveNpcConfig('PIG');
+  assert(pigConfig, 'PIG config exists');
+  const descriptor = { type: 'PIG', index: 0, localTileX: 6, localTileY: 6 };
+  const descriptorSnapshot = JSON.stringify(descriptor);
+  const chunkData = createChunkData({ npcs: [descriptor] });
+  const chunkDataSnapshot = JSON.stringify(chunkData);
+  const pigId = buildChunkNpcId(1, -2, 'PIG', 0);
+  const rabbitId = buildChunkNpcId(1, -2, 'RABBIT', 0);
+  assert(pigId !== rabbitId, 'PIG id differs from RABBIT id');
+  assertEqual(pigId, 'chunk_1_-2_NPC_PIG_0', 'PIG stable id format');
+
+  const { instance, scene, removedNpcMarks } = createInstance(chunkData);
+  const npcObject = instance.npcObjects[0];
+
+  assertEqual(instance.npcObjects.length, 1, 'one pig created');
+  assertEqual(scene.images.length, 1, 'one pig image');
+  assertEqual(npcObject.textureKey, 'pig-texture', 'pig uses pig-texture');
+  assertEqual(npcObject.getData('npcId'), pigId, 'pig stable npcId stored');
+  assertEqual(npcObject.getData('npcType'), 'PIG', 'npcType PIG');
+  assertEqual(npcObject.getData('maxHp'), 20, 'pig maxHp 20');
+  assertEqual(npcObject.getData('hp'), 20, 'pig hp 20');
+  assertEqual(npcObject.getData('dead'), false, 'pig alive');
+  assert(instance.npcIds.has(pigId), 'pig id in npcIds');
+
+  // Display size + body from config
+  assertEqual(npcObject.displayWidth, pigConfig.renderWidth, 'pig display width from config');
+  assertEqual(npcObject.displayHeight, pigConfig.renderHeight, 'pig display height from config');
+  assertEqual(scene.existingCalls.length, 1, 'pig gets one physics body');
+  assert(npcObject.body, 'pig has body');
+  assertEqual(npcObject.body.allowGravity, false, 'pig allowGravity false');
+  assertEqual(npcObject.body.immovable, true, 'pig immovable true');
+  assertEqual(npcObject.body.moves, false, 'pig body.moves false');
+  assertEqual(npcObject.body.width, pigConfig.bodyWidth, 'pig body width from config');
+  assertEqual(npcObject.body.height, pigConfig.bodyHeight, 'pig body height from config');
+  assertEqual(npcObject.body.offset.x, pigConfig.bodyOffsetX, 'pig body offsetX from config');
+  assertEqual(npcObject.body.offset.y, pigConfig.bodyOffsetY, 'pig body offsetY from config');
+  assert(pigConfig.bodyWidth > getPassiveNpcConfig('RABBIT').bodyWidth, 'pig body wider than rabbit');
+
+  // Collider, no damage callback
+  assertEqual(scene.colliderCalls.length, 1, 'pig gets one collider');
+  assertEqual(scene.colliderCalls[0].object1, npcObject, 'collider object1 pig');
+  assertEqual(scene.colliderCalls[0].object2, scene.player, 'collider object2 player');
+  assertEqual(scene.colliderCalls[0].callback, null, 'pig collider has no damage callback');
+
+  // Wander uses shared flow with pig-specific timings, slower than rabbit
+  assertEqual(getWanderCallCount(), 1, 'pig plans wander once');
+  assertEqual(scene.tweensList.length, 1, 'pig wander tween created');
+  const tween = scene.tweensList[0];
+  assertEqual(tween.config.duration, pigConfig.wanderTweenDuration, 'pig tween duration from config');
+  assertEqual(tween.config.duration, 700, 'pig tween duration 700');
+  assert(
+    pigConfig.wanderTweenDuration > getPassiveNpcConfig('RABBIT').wanderTweenDuration,
+    'pig moves slower than rabbit'
+  );
+  tween.complete();
+  assertEqual(npcObject.body.x, npcObject.x, 'pig body x synced after tween');
+  assertEqual(npcObject.body.y, npcObject.y, 'pig body y synced after tween');
+  assertEqual(scene.timersList.length, 1, 'pig pause timer after tween');
+  assertEqual(scene.timersList[0].delay, pigConfig.wanderPauseDuration, 'pig pause duration from config');
+  assertEqual(scene.timersList[0].delay, 1200, 'pig pause duration 1200');
+
+  // Nearest attackable search includes pig
+  assertEqual(
+    instance.getNearestAttackableNpc(npcObject.x, npcObject.y, 52),
+    npcObject,
+    'attack search finds pig'
+  );
+
+  assertEqual(JSON.stringify(descriptor), descriptorSnapshot, 'pig descriptor unchanged');
+  assertEqual(JSON.stringify(chunkData), chunkDataSnapshot, 'pig chunkData unchanged');
+  instance.destroy();
+}
+
+// PIG: fist (10) kills in 2 hits; single 3x RAW_MEAT stack
+{
+  resetWanderCalls();
+  const { instance, scene, removedNpcMarks } = createInstance(createChunkData({
+    npcs: [{ type: 'PIG', index: 0, localTileX: 6, localTileY: 6 }]
+  }));
+  const npcObject = instance.npcObjects[0];
+  const pigId = npcObject.getData('npcId');
+  const deathX = npcObject.x;
+  const deathY = npcObject.y;
+
+  const first = instance.applyNpcDamage(npcObject, 10);
+  assertEqual(first.health, 10, 'pig 20 -> 10 after fist');
+  assertEqual(first.died, false, 'pig alive after one fist');
+  assertEqual(scene.groundItems.length, 0, 'no loot while alive');
+
+  const second = instance.applyNpcDamage(npcObject, 10);
+  assertEqual(second.health, 0, 'pig dies on second fist');
+  assertEqual(second.died, true, 'pig death on second fist');
+  assert(npcObject.getData('hp') >= 0, 'pig hp not negative');
+  assertEqual(removedNpcMarks.length, 1, 'pig markNpcRemoved once');
+  assertEqual(removedNpcMarks[0], pigId, 'pig marked with stable id');
+
+  assertEqual(scene.groundItems.length, 1, 'pig death drops exactly one stack');
+  assertEqual(scene.groundItems[0].itemType, 'RAW_MEAT', 'pig loot RAW_MEAT');
+  assertEqual(scene.groundItems[0].quantity, 3, 'pig loot quantity 3');
+  assertEqual(scene.groundItems[0].x, deathX, 'pig loot at death x');
+  assertEqual(scene.groundItems[0].y, deathY, 'pig loot at death y');
+
+  const afterDead = instance.applyNpcDamage(npcObject, 10);
+  assertEqual(afterDead.damage, 0, 'damage after pig death ignored');
+  assertEqual(instance.killNpc(npcObject), false, 'repeat killNpc safe for pig');
+  assertEqual(scene.groundItems.length, 1, 'pig repeat death no second stack');
+  instance.destroy();
+}
+
+// PIG: stone sword (15) kills in 2 hits
+{
+  resetWanderCalls();
+  const { instance } = createInstance(createChunkData({
+    npcs: [{ type: 'PIG', index: 0, localTileX: 6, localTileY: 6 }]
+  }));
+  const npcObject = instance.npcObjects[0];
+  const first = instance.applyNpcDamage(npcObject, 15);
+  assertEqual(first.health, 5, 'pig 20 -> 5 after sword');
+  assertEqual(first.died, false, 'pig alive after one sword hit');
+  const second = instance.applyNpcDamage(npcObject, 15);
+  assertEqual(second.damage, 5, 'second sword hit clamped to remaining hp');
+  assertEqual(second.health, 0, 'pig dies on second sword hit');
+  assertEqual(second.died, true, 'pig death on second sword hit');
+  instance.destroy();
+}
+
+// PIG persistent death: skip create when removed; unload living pig does not mark removed
+{
+  resetWanderCalls();
+  const removed = new Set();
+  const chunkData = createChunkData({
+    npcs: [{ type: 'PIG', index: 0, localTileX: 6, localTileY: 6 }]
+  });
+  const pigId = buildChunkNpcId(1, -2, 'PIG', 0);
+
+  const alive = createInstance(chunkData, { isNpcRemoved: (id) => removed.has(id) });
+  assertEqual(alive.instance.npcObjects.length, 1, 'living pig created');
+  alive.instance.destroy();
+  assertEqual(alive.removedNpcMarks.length, 0, 'unload living pig does not mark removed');
+  assertEqual(alive.scene.groundItems.length, 0, 'unload living pig drops no loot');
+
+  removed.add(pigId);
+  resetWanderCalls();
+  const skipped = createInstance(chunkData, { isNpcRemoved: (id) => removed.has(id) });
+  assertEqual(skipped.instance.npcObjects.length, 0, 'removed pig creates no visual');
+  assertEqual(skipped.scene.images.length, 0, 'removed pig no image');
+  assertEqual(skipped.scene.existingCalls.length, 0, 'removed pig no body');
+  assertEqual(skipped.scene.colliderCalls.length, 0, 'removed pig no collider');
+  assertEqual(skipped.scene.tweensList.length, 0, 'removed pig no tween');
+  assertEqual(skipped.scene.timersList.length, 0, 'removed pig no timer');
+  assertEqual(getWanderCallCount(), 0, 'removed pig does not plan wander');
+  assertEqual(skipped.instance.npcIds.size, 0, 'removed pig not in npcIds');
+  skipped.instance.destroy();
+}
+
+// RABBIT + PIG coexist: independent loot quantities
+{
+  resetWanderCalls();
+  const { instance, scene } = createInstance(createChunkData({
+    npcs: [
+      { type: 'RABBIT', index: 0, localTileX: 3, localTileY: 3 },
+      { type: 'PIG', index: 0, localTileX: 10, localTileY: 10 }
+    ]
+  }));
+  assertEqual(instance.npcObjects.length, 2, 'rabbit and pig coexist');
+  const rabbit = instance.npcObjects.find((n) => n.getData('npcType') === 'RABBIT');
+  const pig = instance.npcObjects.find((n) => n.getData('npcType') === 'PIG');
+  assert(rabbit && pig, 'both npc types present');
+  assertEqual(rabbit.getData('maxHp'), 6, 'rabbit still 6 hp');
+  assertEqual(pig.getData('maxHp'), 20, 'pig 20 hp');
+
+  instance.applyNpcDamage(rabbit, 6);
+  instance.applyNpcDamage(pig, 20);
+  const rabbitDrop = scene.groundItems.find((i) => i.quantity === 1);
+  const pigDrop = scene.groundItems.find((i) => i.quantity === 3);
+  assert(rabbitDrop && rabbitDrop.itemType === 'RAW_MEAT', 'rabbit drops 1 RAW_MEAT');
+  assert(pigDrop && pigDrop.itemType === 'RAW_MEAT', 'pig drops 3 RAW_MEAT');
+  assertEqual(scene.groundItems.length, 2, 'two separate stacks');
+  instance.destroy();
+}
 
 console.log('test-npc-visual: ok');

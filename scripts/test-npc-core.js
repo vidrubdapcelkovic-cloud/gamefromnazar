@@ -130,6 +130,10 @@ assertThrows(() => buildChunkNpcId(0, 0.5, 'RABBIT', 0), 'non-integer chunkY');
 const npcSeed = 424242;
 const npcChunkA = ChunkGenerator.generate(npcSeed, 2, -1);
 const npcChunkB = ChunkGenerator.generate(npcSeed, 2, -1);
+function countType(npcs, type) {
+  return npcs.filter((entry) => entry.type === type).length;
+}
+
 assert(Array.isArray(npcChunkA.npcs), 'generate always returns npcs array');
 assertEqual(JSON.stringify(npcChunkA.npcs), JSON.stringify(npcChunkB.npcs), 'npc descriptors are deterministic');
 assertEqual(
@@ -137,7 +141,9 @@ assertEqual(
   JSON.stringify(npcChunkB.objects),
   'objects stay deterministic alongside npcs'
 );
-assert(npcChunkA.npcs.length <= 1, 'at most one npc per chunk');
+assert(countType(npcChunkA.npcs, 'RABBIT') <= 1, 'at most one rabbit per chunk');
+assert(countType(npcChunkA.npcs, 'PIG') <= 1, 'at most one pig per chunk');
+assert(npcChunkA.npcs.length <= 2, 'at most two npcs per chunk (rabbit + pig)');
 
 let foundWithNpc = null;
 let foundWithoutNpc = null;
@@ -145,17 +151,20 @@ for (let chunkX = -8; chunkX <= 8; chunkX += 1) {
   for (let chunkY = -8; chunkY <= 8; chunkY += 1) {
     const sample = ChunkGenerator.generate(npcSeed, chunkX, chunkY);
     assert(Array.isArray(sample.npcs), 'npcs always present');
-    assert(sample.npcs.length <= 1, 'npc count never exceeds 1');
-    if (sample.npcs.length === 1 && !foundWithNpc) foundWithNpc = sample;
-    if (sample.npcs.length === 0 && !foundWithoutNpc) foundWithoutNpc = sample;
+    assert(countType(sample.npcs, 'RABBIT') <= 1, 'rabbit count never exceeds 1');
+    assert(countType(sample.npcs, 'PIG') <= 1, 'pig count never exceeds 1');
+    assert(sample.npcs.length <= 2, 'npc count never exceeds 2');
+    const rabbitCount = countType(sample.npcs, 'RABBIT');
+    if (rabbitCount === 1 && !foundWithNpc) foundWithNpc = sample;
+    if (rabbitCount === 0 && !foundWithoutNpc) foundWithoutNpc = sample;
     if (foundWithNpc && foundWithoutNpc) break;
   }
   if (foundWithNpc && foundWithoutNpc) break;
 }
-assert(foundWithNpc, 'some chunks can spawn an npc');
-assert(foundWithoutNpc, 'spawn is not guaranteed in every chunk');
+assert(foundWithNpc, 'some chunks can spawn a rabbit');
+assert(foundWithoutNpc, 'rabbit spawn is not guaranteed in every chunk');
 
-const npc = foundWithNpc.npcs[0];
+const npc = foundWithNpc.npcs.find((entry) => entry.type === 'RABBIT');
 assertEqual(npc.type, 'RABBIT', 'descriptor type is RABBIT');
 assertEqual(npc.index, 0, 'descriptor index is 0');
 assert(Number.isInteger(npc.localTileX), 'localTileX is integer');
@@ -199,7 +208,9 @@ assertEqual(new Set(ids).size, ids.length, 'no duplicate npc ids inside chunk');
 
 const negativeChunk = ChunkGenerator.generate(npcSeed, -3, -2);
 assert(Array.isArray(negativeChunk.npcs), 'negative chunk coordinates support npcs array');
-assert(negativeChunk.npcs.length <= 1, 'negative chunk also at most one npc');
+assert(negativeChunk.npcs.length <= 2, 'negative chunk also at most two npcs');
+assert(countType(negativeChunk.npcs, 'RABBIT') <= 1, 'negative chunk at most one rabbit');
+assert(countType(negativeChunk.npcs, 'PIG') <= 1, 'negative chunk at most one pig');
 
 // TREE/ROCK object stream must remain independent of NPC stream.
 const objectsOnlyA = ChunkGenerator.generate(111, 5, 5).objects;
