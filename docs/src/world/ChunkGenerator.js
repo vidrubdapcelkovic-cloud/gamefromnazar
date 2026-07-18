@@ -200,6 +200,32 @@ class ChunkGenerator {
       }
     }
 
+    // BOWMAN uses its own enemy stream so prior hostile placement stays unchanged.
+    // Melee-only on this stage; bow art is static (ranged attack is a later stage).
+    const bowmanRng = SeededRandom.fromParts(
+      worldSeed,
+      chunkX,
+      chunkY,
+      'chunk-enemies-bowman'
+    );
+    if (bowmanRng.next() < 0.10) {
+      let placedBowman = false;
+      for (let attempt = 0; attempt < 48 && !placedBowman; attempt += 1) {
+        const localX = bowmanRng.nextInt(0, chunkSize);
+        const localY = bowmanRng.nextInt(0, chunkSize);
+        const key = `${localX},${localY}`;
+        if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
+        occupied.add(key);
+        npcs.push({
+          type: 'BOWMAN',
+          index: 0,
+          localTileX: localX,
+          localTileY: localY
+        });
+        placedBowman = true;
+      }
+    }
+
     return {
       chunkX,
       chunkY,

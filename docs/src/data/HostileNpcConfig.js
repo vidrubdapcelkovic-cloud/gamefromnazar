@@ -57,6 +57,31 @@ const HostileNpcConfig = Object.freeze({
     attackCooldown: 900,
     chaseSpeed: 68,
     returnRadius: 12
+  }),
+  BOWMAN: Object.freeze({
+    type: 'BOWMAN',
+    textureKey: 'bowman-texture',
+    maxHp: 24,
+    lootType: 'RAW_MEAT',
+    lootQuantity: 2,
+    // Prepared texture 856x1169 (content 824x1137 + 16px padding, aspect ~0.725).
+    // Visible content height ~102 world px; full display includes transparent padding.
+    renderWidth: 77,
+    renderHeight: 105,
+    // Body covers central torso / pelvis / upper legs (excludes head/arms/bow).
+    bodyWidth: 330,
+    bodyHeight: 456,
+    bodyOffsetX: 263,
+    bodyOffsetY: 379,
+    wanderTweenDuration: 800,
+    wanderPauseDuration: 1100,
+    detectionRadius: 165,
+    disengageRadius: 245,
+    attackRange: 30,
+    attackDamage: 5,
+    attackCooldown: 1000,
+    chaseSpeed: 60,
+    returnRadius: 12
   })
 });
 

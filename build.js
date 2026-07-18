@@ -19,6 +19,7 @@ const requiredRelativePaths = [
   'src/generated/BuffaloTextureData.js',
   'src/generated/TallMonsterTextureData.js',
   'src/generated/ElectricmanTextureData.js',
+  'src/generated/BowmanTextureData.js',
   'src/world/WorldGrid.js',
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
@@ -118,6 +119,12 @@ const electricmanTextureModuleSize = generateEmbeddedTextureModule(
   'ELECTRICMAN_TEXTURE_DATA_URL',
   'ELECTRICMAN'
 );
+const bowmanTextureModuleSize = generateEmbeddedTextureModule(
+  'assets/generated/bowman.png',
+  'src/generated/BowmanTextureData.js',
+  'BOWMAN_TEXTURE_DATA_URL',
+  'BOWMAN'
+);
 
 requiredRelativePaths.forEach(requireFile);
 
@@ -137,6 +144,7 @@ const llamaTextureData = fs.readFileSync(requireFile('src/generated/LlamaTexture
 const buffaloTextureData = fs.readFileSync(requireFile('src/generated/BuffaloTextureData.js'), 'utf8');
 const tallMonsterTextureData = fs.readFileSync(requireFile('src/generated/TallMonsterTextureData.js'), 'utf8');
 const electricmanTextureData = fs.readFileSync(requireFile('src/generated/ElectricmanTextureData.js'), 'utf8');
+const bowmanTextureData = fs.readFileSync(requireFile('src/generated/BowmanTextureData.js'), 'utf8');
 const worldGrid = fs.readFileSync(requireFile('src/world/WorldGrid.js'), 'utf8');
 const chunkMath = fs.readFileSync(requireFile('src/world/ChunkMath.js'), 'utf8');
 const seededRandom = fs.readFileSync(requireFile('src/world/SeededRandom.js'), 'utf8');
@@ -209,6 +217,7 @@ ${safeScript(llamaTextureData)}
 ${safeScript(buffaloTextureData)}
 ${safeScript(tallMonsterTextureData)}
 ${safeScript(electricmanTextureData)}
+${safeScript(bowmanTextureData)}
 ${safeScript(worldGrid)}
 ${safeScript(chunkMath)}
 ${safeScript(seededRandom)}
@@ -272,6 +281,7 @@ const pagesHtml = `<!doctype html>
     <script src="./src/generated/BuffaloTextureData.js"></script>
     <script src="./src/generated/TallMonsterTextureData.js"></script>
     <script src="./src/generated/ElectricmanTextureData.js"></script>
+    <script src="./src/generated/BowmanTextureData.js"></script>
     <script src="./src/world/WorldGrid.js"></script>
     <script src="./src/world/ChunkMath.js"></script>
     <script src="./src/world/SeededRandom.js"></script>
@@ -348,6 +358,7 @@ fs.copyFileSync(requireFile('src/generated/LlamaTextureData.js'), path.join(docs
 fs.copyFileSync(requireFile('src/generated/BuffaloTextureData.js'), path.join(docsGeneratedDirectory, 'BuffaloTextureData.js'));
 fs.copyFileSync(requireFile('src/generated/TallMonsterTextureData.js'), path.join(docsGeneratedDirectory, 'TallMonsterTextureData.js'));
 fs.copyFileSync(requireFile('src/generated/ElectricmanTextureData.js'), path.join(docsGeneratedDirectory, 'ElectricmanTextureData.js'));
+fs.copyFileSync(requireFile('src/generated/BowmanTextureData.js'), path.join(docsGeneratedDirectory, 'BowmanTextureData.js'));
 fs.copyFileSync(requireFile('src/world/WorldGrid.js'), path.join(docsWorldDirectory, 'WorldGrid.js'));
 fs.copyFileSync(requireFile('src/world/ChunkMath.js'), path.join(docsWorldDirectory, 'ChunkMath.js'));
 fs.copyFileSync(requireFile('src/world/SeededRandom.js'), path.join(docsWorldDirectory, 'SeededRandom.js'));
@@ -393,6 +404,7 @@ console.log(`LLAMA texture (встроен): src/generated/LlamaTextureData.js (
 console.log(`BUFFALO texture (встроен): src/generated/BuffaloTextureData.js (${buffaloTextureModuleSize} байт)`);
 console.log(`TALL_MONSTER texture (встроен): src/generated/TallMonsterTextureData.js (${tallMonsterTextureModuleSize} байт)`);
 console.log(`ELECTRICMAN texture (встроен): src/generated/ElectricmanTextureData.js (${electricmanTextureModuleSize} байт)`);
+console.log(`BOWMAN texture (встроен): src/generated/BowmanTextureData.js (${bowmanTextureModuleSize} байт)`);
 console.log(`Автономная версия: ${autonomousPath} (${autonomousSize} байт)`);
 console.log(`GitHub Pages: ${pagesIndexPath} (${pagesIndexSize} байт)`);
 console.log(`Phaser: ${path.join(docsLibDirectory, 'phaser.min.js')} (${fs.statSync(path.join(docsLibDirectory, 'phaser.min.js')).size} байт)`);

@@ -85,6 +85,14 @@ class GameScene extends Phaser.Scene {
     ) {
       this.load.image('electricman-texture', ELECTRICMAN_TEXTURE_DATA_URL);
     }
+    if (
+      typeof BOWMAN_TEXTURE_DATA_URL === 'string'
+      && BOWMAN_TEXTURE_DATA_URL.length > 0
+      && this.textures
+      && !this.textures.exists('bowman-texture')
+    ) {
+      this.load.image('bowman-texture', BOWMAN_TEXTURE_DATA_URL);
+    }
   }
 
   create() {
