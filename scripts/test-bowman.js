@@ -101,6 +101,18 @@ const TEX_H = 1169;
   assertEqual(bow.renderWidth, 77, 'renderWidth');
   assertEqual(bow.renderHeight, 105, 'renderHeight');
 
+  // Ranged attack config (BOWMAN only; other hostiles stay melee).
+  assertEqual(bow.attackMode, 'RANGED', 'attackMode RANGED');
+  assertEqual(bow.rangedAttackRange, 150, 'rangedAttackRange');
+  assertEqual(bow.projectileSpeed, 180, 'projectileSpeed');
+  assertEqual(bow.projectileDamage, 6, 'projectileDamage');
+  assertEqual(bow.projectileLifetime, 1200, 'projectileLifetime');
+  assertEqual(bow.projectileWidth, 14, 'projectileWidth');
+  assertEqual(bow.projectileHeight, 3, 'projectileHeight');
+  assert(bow.rangedAttackRange < bow.disengageRadius, 'ranged range < disengage');
+  assert(tall.attackMode !== 'RANGED', 'TALL_MONSTER stays melee');
+  assert(elec.attackMode !== 'RANGED', 'ELECTRICMAN stays melee');
+
   const visibleW = bow.renderWidth * CONTENT_W / TEX_W;
   const visibleH = bow.renderHeight * CONTENT_H / TEX_H;
   assert(visibleH >= 95 && visibleH <= 110, 'visible height 95..110');
@@ -515,39 +527,11 @@ const TEX_H = 1169;
   assertEqual(npc.displayHeight, bow.renderHeight, 'display h');
   assertEqual(npc.body.width, bow.bodyWidth, 'body w');
   assertEqual(npc.body.height, bow.bodyHeight, 'body h');
-  assertEqual(instance.getNearestAttackableNpc(npc.x, npc.y, 80), npc, 'melee sees');
-
-  // Shared controller melee damage + cooldown (5 dmg / 1000 ms)
-  const damageCalls = [];
-  const harness = {
-    x: npc.x,
-    y: npc.y,
-    player: { x: npc.x + 10, y: npc.y }
-  };
-  const controller = new HostileNpcController({
-    config: bow,
-    homeX: npc.x,
-    homeY: npc.y,
-    getPosition: () => ({ x: harness.x, y: harness.y }),
-    setPosition: (x, y) => { harness.x = x; harness.y = y; },
-    getPlayerPosition: () => harness.player,
-    stopWander() {},
-    resumeWander() {},
-    damagePlayer(amount) {
-      damageCalls.push(amount);
-      return amount;
-    },
-    canOccupy: () => true
-  });
-  controller.update(0, 16);
-  assertEqual(controller.getState(), HOSTILE_NPC_STATE.ATTACK, 'melee attack state');
-  assertEqual(damageCalls.length, 1, 'first attack');
-  assertEqual(damageCalls[0], 5, 'attackDamage 5');
-  controller.update(500, 16);
-  assertEqual(damageCalls.length, 1, 'cooldown blocks');
-  controller.update(1000, 16);
-  assertEqual(damageCalls.length, 2, 'after 1000ms');
-  controller.destroy();
+  assertEqual(instance.getNearestAttackableNpc(npc.x, npc.y, 80), npc, 'player melee sees BOWMAN');
+  // BOWMAN uses a ranged HostileNpcController; ranged/projectile behaviour is
+  // covered in test-bowman-ranged.js. Here we keep verifying player melee, death,
+  // loot and persistence which are unchanged by the ranged stage.
+  assertEqual(instance.hostileControllers[0].getState(), HOSTILE_NPC_STATE.IDLE_WANDER, 'controller idle');
 
   assertEqual(instance.applyNpcDamage(npc, 12).health, 12, 'dmg 1');
   assertEqual(instance.applyNpcDamage(npc, 12).died, true, 'death');
@@ -578,15 +562,15 @@ const TEX_H = 1169;
   afterLoad.destroy();
 }
 
-// No projectile / ranged logic wired for BOWMAN
+// BOWMAN generation unchanged by the ranged stage; projectile state is runtime
+// only and must never be serialised by SaveSystem.
 {
-  const controllerSrc = fs.readFileSync(path.join(root, 'src/world/HostileNpcController.js'), 'utf8');
-  const configSrc = fs.readFileSync(path.join(root, 'src/data/HostileNpcConfig.js'), 'utf8');
   const generatorSrc = fs.readFileSync(path.join(root, 'src/world/ChunkGenerator.js'), 'utf8');
-  assert(!/\bprojectile\b/i.test(controllerSrc), 'controller has no projectile');
-  assert(!/\branged\b/i.test(controllerSrc), 'controller has no ranged');
-  assert(!/projectileRange|arrowSpeed|rangedAttack/.test(configSrc), 'config has no ranged fields');
   assert(generatorSrc.includes("type: 'BOWMAN'"), 'generator places BOWMAN');
+
+  const saveSrc = fs.readFileSync(path.join(root, 'src/systems/SaveSystem.js'), 'utf8');
+  assert(!/projectile/i.test(saveSrc), 'SaveSystem does not persist projectiles');
+  assert(!/\barrow\b/i.test(saveSrc), 'SaveSystem does not persist arrows');
 }
 
 // Preload / embedding

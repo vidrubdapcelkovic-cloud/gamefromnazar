@@ -2,6 +2,7 @@ const HOSTILE_NPC_STATE = Object.freeze({
   IDLE_WANDER: 'IDLE_WANDER',
   CHASE: 'CHASE',
   ATTACK: 'ATTACK',
+  RANGED_ATTACK: 'RANGED_ATTACK',
   RETURN: 'RETURN'
 });
 
@@ -17,9 +18,16 @@ const HOSTILE_NPC_STATE = Object.freeze({
  * - getPlayerPosition(): { x, y } | null
  * - stopWander()
  * - resumeWander()
- * - damagePlayer(amount): number of HP actually removed
+ * - damagePlayer(amount): number of HP actually removed (melee attackers)
+ * - onRangedAttack(target, time): fired when a RANGED attacker releases a shot;
+ *   target is the player position captured at release time. The controller only
+ *   decides the moment; the runtime owner creates and manages the projectile.
  * - canOccupy(x, y): optional obstacle check; default always true
  * - onMoved(): optional body/depth sync after position change
+ *
+ * A config with attackMode === 'RANGED' uses rangedAttackRange and the
+ * RANGED_ATTACK state; any other config stays melee (ATTACK state, direct
+ * damagePlayer). Melee behaviour is unchanged.
  */
 class HostileNpcController {
   constructor(options) {
@@ -48,12 +56,25 @@ class HostileNpcController {
     this.damagePlayer = typeof options.damagePlayer === 'function'
       ? options.damagePlayer
       : () => 0;
+    this.onRangedAttack = typeof options.onRangedAttack === 'function'
+      ? options.onRangedAttack
+      : () => {};
     this.canOccupy = typeof options.canOccupy === 'function'
       ? options.canOccupy
       : () => true;
     this.onMoved = typeof options.onMoved === 'function'
       ? options.onMoved
       : () => {};
+
+    // Ranged attackers use rangedAttackRange and the RANGED_ATTACK state; every
+    // other config keeps its melee attackRange and the ATTACK state.
+    this.ranged = !!(config.attackMode === 'RANGED');
+    this.attackRange = this.ranged && Number.isFinite(config.rangedAttackRange)
+      ? config.rangedAttackRange
+      : config.attackRange;
+    this.attackState = this.ranged
+      ? HOSTILE_NPC_STATE.RANGED_ATTACK
+      : HOSTILE_NPC_STATE.ATTACK;
 
     this.state = HOSTILE_NPC_STATE.IDLE_WANDER;
     this.nextAttackTime = 0;
@@ -86,13 +107,16 @@ class HostileNpcController {
 
     switch (this.state) {
       case HOSTILE_NPC_STATE.IDLE_WANDER:
-        this.updateIdleWander(safeTime, distanceToPlayer);
+        this.updateIdleWander(safeTime, player, hasPlayer, distanceToPlayer);
         break;
       case HOSTILE_NPC_STATE.CHASE:
         this.updateChase(safeTime, safeDelta, self, player, hasPlayer, distanceToPlayer);
         break;
       case HOSTILE_NPC_STATE.ATTACK:
         this.updateAttack(safeTime, self, player, hasPlayer, distanceToPlayer);
+        break;
+      case HOSTILE_NPC_STATE.RANGED_ATTACK:
+        this.updateRangedAttack(safeTime, self, player, hasPlayer, distanceToPlayer);
         break;
       case HOSTILE_NPC_STATE.RETURN:
         this.updateReturn(safeDelta, self, hasPlayer, distanceToPlayer, distanceToHome);
@@ -103,11 +127,11 @@ class HostileNpcController {
     }
   }
 
-  updateIdleWander(time, distanceToPlayer) {
+  updateIdleWander(time, player, hasPlayer, distanceToPlayer) {
     if (distanceToPlayer <= this.config.detectionRadius) {
-      if (distanceToPlayer <= this.config.attackRange) {
+      if (distanceToPlayer <= this.attackRange) {
         this.enterAttack();
-        this.tryAttack(time);
+        this.performAttack(time, player, hasPlayer);
       } else {
         this.enterChase();
       }
@@ -119,9 +143,9 @@ class HostileNpcController {
       this.enterReturn();
       return;
     }
-    if (distanceToPlayer <= this.config.attackRange) {
+    if (distanceToPlayer <= this.attackRange) {
       this.enterAttack();
-      this.tryAttack(time);
+      this.performAttack(time, player, hasPlayer);
       return;
     }
     this.moveToward(self.x, self.y, player.x, player.y, delta);
@@ -132,8 +156,34 @@ class HostileNpcController {
       this.enterReturn();
       return;
     }
-    if (distanceToPlayer > this.config.attackRange) {
+    if (distanceToPlayer > this.attackRange) {
       this.enterChase();
+      return;
+    }
+    this.performAttack(time, player, hasPlayer);
+  }
+
+  updateRangedAttack(time, self, player, hasPlayer, distanceToPlayer) {
+    if (!hasPlayer || distanceToPlayer > this.config.disengageRadius) {
+      this.enterReturn();
+      return;
+    }
+    if (distanceToPlayer > this.attackRange) {
+      this.enterChase();
+      return;
+    }
+    // Movement is halted in RANGED_ATTACK; the controller only times the shot.
+    this.performAttack(time, player, hasPlayer);
+  }
+
+  performAttack(time, player, hasPlayer) {
+    if (this.destroyed) return;
+    if (this.ranged) {
+      if (!hasPlayer || !player) return;
+      if (time >= this.nextAttackTime) {
+        this.onRangedAttack({ x: player.x, y: player.y }, time);
+        this.nextAttackTime = time + this.config.attackCooldown;
+      }
       return;
     }
     this.tryAttack(time);
@@ -174,7 +224,7 @@ class HostileNpcController {
       this.stopWander();
       this.wanderRunning = false;
     }
-    this.state = HOSTILE_NPC_STATE.ATTACK;
+    this.state = this.attackState;
   }
 
   enterReturn() {
@@ -247,6 +297,7 @@ class HostileNpcController {
     this.stopWander = () => {};
     this.resumeWander = () => {};
     this.damagePlayer = () => 0;
+    this.onRangedAttack = () => {};
     this.canOccupy = () => false;
     this.onMoved = () => {};
   }

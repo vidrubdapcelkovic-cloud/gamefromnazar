@@ -197,4 +197,105 @@ function createHarness(overrides) {
   assertEqual(controller.getState(), HOSTILE_NPC_STATE.IDLE_WANDER, 'state cleared');
 }
 
+// Melee configs stay melee: TALL_MONSTER and ELECTRICMAN reach ATTACK, not RANGED
+{
+  ['TALL_MONSTER', 'ELECTRICMAN'].forEach((type) => {
+    const cfg = getHostileNpcConfig(type);
+    assert(cfg.attackMode !== 'RANGED', `${type} is melee`);
+    assert(!Object.prototype.hasOwnProperty.call(cfg, 'rangedAttackRange'), `${type} has no ranged range`);
+    assert(!Object.prototype.hasOwnProperty.call(cfg, 'projectileSpeed'), `${type} has no projectile fields`);
+    const { state, controller } = createHarness({ config: cfg, x: 0, y: 0 });
+    state.player = { x: cfg.attackRange - 1, y: 0 };
+    controller.update(0, 16);
+    assertEqual(controller.getState(), HOSTILE_NPC_STATE.ATTACK, `${type} enters melee ATTACK`);
+    assertEqual(state.damageCalls.length, 1, `${type} melee damage`);
+    assertEqual(state.damageCalls[0], cfg.attackDamage, `${type} melee damage amount`);
+  });
+}
+
+// Ranged BOWMAN: RANGED_ATTACK state, timed shots, no movement, no direct damage
+{
+  const bow = getHostileNpcConfig('BOWMAN');
+  assertEqual(bow.attackMode, 'RANGED', 'BOWMAN ranged mode');
+  assertEqual(bow.rangedAttackRange, 150, 'ranged range 150');
+
+  const state = {
+    x: 0,
+    y: 0,
+    player: null,
+    moves: 0,
+    rangedShots: [],
+    directDamage: 0
+  };
+  const controller = new HostileNpcController({
+    config: bow,
+    homeX: 0,
+    homeY: 0,
+    getPosition: () => ({ x: state.x, y: state.y }),
+    setPosition: (x, y) => { state.x = x; state.y = y; state.moves += 1; },
+    getPlayerPosition: () => state.player,
+    stopWander: () => {},
+    resumeWander: () => {},
+    damagePlayer: () => { state.directDamage += 1; return 0; },
+    onRangedAttack: (target, time) => { state.rangedShots.push({ x: target.x, y: target.y, time }); },
+    canOccupy: () => true
+  });
+
+  assertEqual(controller.getState(), HOSTILE_NPC_STATE.IDLE_WANDER, 'ranged starts idle');
+
+  // Within detection (165) but beyond ranged range (150): chase, no shot.
+  state.player = { x: 160, y: 0 };
+  controller.update(0, 16);
+  assertEqual(controller.getState(), HOSTILE_NPC_STATE.CHASE, 'beyond ranged -> CHASE');
+  assertEqual(state.rangedShots.length, 0, 'no shot while chasing');
+
+  // Enter ranged range: RANGED_ATTACK, immediate first shot, movement halted.
+  state.x = 0;
+  state.y = 0;
+  state.player = { x: 120, y: 0 };
+  const movesBefore = state.moves;
+  controller.update(100, 16);
+  assertEqual(controller.getState(), HOSTILE_NPC_STATE.RANGED_ATTACK, 'enters RANGED_ATTACK');
+  assertEqual(state.rangedShots.length, 1, 'first shot immediate');
+  assertEqual(state.rangedShots[0].x, 120, 'shot target x at release');
+  assertEqual(state.moves, movesBefore, 'no movement in RANGED_ATTACK');
+
+  // Cooldown blocks a second shot (attackCooldown 1000).
+  controller.update(600, 16);
+  assertEqual(state.rangedShots.length, 1, 'cooldown blocks second shot');
+
+  // After cooldown, another shot is released.
+  controller.update(1100, 16);
+  assertEqual(state.rangedShots.length, 2, 'shot after cooldown');
+
+  // Beyond ranged range but within disengage (245): back to CHASE.
+  state.player = { x: 200, y: 0 };
+  controller.update(1200, 16);
+  assertEqual(controller.getState(), HOSTILE_NPC_STATE.CHASE, 'leave ranged range -> CHASE');
+
+  // Beyond disengage: RETURN.
+  state.player = { x: 300, y: 0 };
+  controller.update(1300, 16);
+  assertEqual(controller.getState(), HOSTILE_NPC_STATE.RETURN, 'leave disengage -> RETURN');
+
+  assertEqual(state.directDamage, 0, 'ranged never calls direct damagePlayer');
+
+  // Independent cooldowns/state per controller instance.
+  const state2 = { x: 0, y: 0, player: { x: 100, y: 0 }, rangedShots: [] };
+  const controller2 = new HostileNpcController({
+    config: bow,
+    homeX: 0,
+    homeY: 0,
+    getPosition: () => ({ x: state2.x, y: state2.y }),
+    setPosition: () => {},
+    getPlayerPosition: () => state2.player,
+    onRangedAttack: (target, time) => { state2.rangedShots.push({ time }); },
+    canOccupy: () => true
+  });
+  controller2.update(0, 16);
+  assertEqual(state2.rangedShots.length, 1, 'second bowman fires independently');
+  controller2.update(500, 16);
+  assertEqual(state2.rangedShots.length, 1, 'second bowman own cooldown');
+}
+
 console.log('test-hostile-npc-core: ok');

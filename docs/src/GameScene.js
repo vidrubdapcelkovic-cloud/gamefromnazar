@@ -2881,6 +2881,9 @@ class GameScene extends Phaser.Scene {
         if (instance && typeof instance.updateHostiles === 'function') {
           instance.updateHostiles(hostileTime, hostileDelta);
         }
+        if (instance && typeof instance.updateProjectiles === 'function') {
+          instance.updateProjectiles(hostileTime, hostileDelta);
+        }
       });
       if (this.playerStatsModel.isDead()) this.handlePlayerDeath();
     }

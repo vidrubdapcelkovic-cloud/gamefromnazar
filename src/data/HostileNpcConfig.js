@@ -77,11 +77,21 @@ const HostileNpcConfig = Object.freeze({
     wanderPauseDuration: 1100,
     detectionRadius: 165,
     disengageRadius: 245,
+    // Melee attackRange kept for shared shape; BOWMAN attacks from rangedAttackRange.
     attackRange: 30,
     attackDamage: 5,
     attackCooldown: 1000,
     chaseSpeed: 60,
-    returnRadius: 12
+    returnRadius: 12,
+    // Ranged attack (first simple direct arrow). Only BOWMAN is ranged; the
+    // other hostiles omit these fields and stay melee via the ATTACK state.
+    attackMode: 'RANGED',
+    rangedAttackRange: 150,
+    projectileSpeed: 180,
+    projectileDamage: 6,
+    projectileLifetime: 1200,
+    projectileWidth: 14,
+    projectileHeight: 3
   })
 });
 

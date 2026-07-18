@@ -1,3 +1,14 @@
+// Runtime-only projectile constants (BOWMAN arrows). Uniquely prefixed to avoid
+// collisions when concatenated with the other world scripts.
+const BOWMAN_ARROW_TEXTURE_KEY = 'bowman-arrow-texture';
+const BOWMAN_ARROW_HIT_HALF = 6;
+const BOWMAN_ARROW_BOUNDS_MARGIN = 48;
+const BOWMAN_PLAYER_HIT_HALF_DEFAULT = 14;
+const BOWMAN_OBSTACLE_HALF = Object.freeze({
+  ROCK: { x: 14, y: 12 },
+  TREE: { x: 12, y: 16 }
+});
+
 class ChunkInstance {
   constructor(scene, chunkData, options) {
     this.scene = scene;
@@ -17,6 +28,9 @@ class ChunkInstance {
     this.npcIds = new Set();
     this.hostileControllers = [];
     this.npcBlockedCells = new Set();
+    // Active BOWMAN arrows live only here (runtime-only, never serialised).
+    this.projectiles = [];
+    this.obstacleRects = this.buildObstacleRects(chunkData);
     this.createGround(chunkData);
     this.createObjects(chunkData);
     this.createNpcs(chunkData);
@@ -381,6 +395,7 @@ class ChunkInstance {
     const config = resolved ? resolved.config : null;
 
     this.destroyHostileControllerForNpc(npcObject);
+    if (typeof npcId === 'string') this.removeProjectilesByOwner(npcId);
     this.stopNpcWander(npcObject);
     this.clearNpcPlayerCollider(npcObject);
     if (config) {
@@ -607,6 +622,9 @@ class ChunkInstance {
         if (!this.scene || typeof this.scene.damagePlayer !== 'function') return 0;
         return this.scene.damagePlayer(amount, npcObject.getData('npcId'));
       },
+      onRangedAttack: (target, time) => {
+        this.spawnBowmanArrow(npcObject, target, config, time);
+      },
       canOccupy: (x, y) => this.canNpcOccupyWorld(x, y),
       onMoved: () => {
         this.syncNpcPhysicsBody(npcObject);
@@ -644,6 +662,252 @@ class ChunkInstance {
       if (!controller || controller.isDestroyed()) return;
       controller.update(time, delta);
     });
+  }
+
+  buildObstacleRects(chunkData) {
+    const rects = [];
+    const objects = Array.isArray(chunkData && chunkData.objects) ? chunkData.objects : [];
+    objects.forEach((objectData) => {
+      if (!objectData) return;
+      const half = BOWMAN_OBSTACLE_HALF[objectData.type];
+      if (!half) return;
+      if (!Number.isInteger(objectData.localTileX) || !Number.isInteger(objectData.localTileY)) return;
+      const center = ChunkMath.localTileCenterWorld(
+        this.chunkX,
+        this.chunkY,
+        objectData.localTileX,
+        objectData.localTileY
+      );
+      rects.push({
+        minX: center.x - half.x,
+        minY: center.y - half.y,
+        maxX: center.x + half.x,
+        maxY: center.y + half.y
+      });
+    });
+    return rects;
+  }
+
+  ensureBowmanArrowTexture() {
+    if (!this.scene || !this.scene.textures) return;
+    if (typeof this.scene.textures.exists === 'function'
+      && this.scene.textures.exists(BOWMAN_ARROW_TEXTURE_KEY)) {
+      return;
+    }
+    if (!this.scene.make || typeof this.scene.make.graphics !== 'function') return;
+    const graphics = this.scene.make.graphics({ x: 0, y: 0, add: false });
+    // Wooden shaft.
+    graphics.fillStyle(0x8a5a2b, 1);
+    graphics.fillRect(2, 1, 9, 1);
+    // Steel head.
+    graphics.fillStyle(0xcfd6da, 1);
+    graphics.fillTriangle(11, 0, 14, 1.5, 11, 3);
+    // Fletching.
+    graphics.fillStyle(0xbfc6cc, 1);
+    graphics.fillRect(0, 0, 2, 3);
+    graphics.generateTexture(BOWMAN_ARROW_TEXTURE_KEY, 14, 3);
+    graphics.destroy();
+  }
+
+  spawnBowmanArrow(sourceNpc, target, config, time) {
+    if (this.destroyed) return null;
+    if (!config) return null;
+    if (!sourceNpc || sourceNpc.destroyed || sourceNpc.getData('dead')) return null;
+    if (!this.scene || !this.scene.add || typeof this.scene.add.image !== 'function') return null;
+
+    const originX = sourceNpc.x;
+    const originY = sourceNpc.y;
+    const targetX = target && Number.isFinite(target.x) ? target.x : NaN;
+    const targetY = target && Number.isFinite(target.y) ? target.y : NaN;
+    if (!Number.isFinite(originX) || !Number.isFinite(originY)) return null;
+    if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) return null;
+
+    let dirX = targetX - originX;
+    let dirY = targetY - originY;
+    const length = Math.hypot(dirX, dirY);
+    // Zero-length direction: never emit a degenerate projectile.
+    if (!(length > 0)) return null;
+    dirX /= length;
+    dirY /= length;
+
+    const speed = config.projectileSpeed;
+    const damage = config.projectileDamage;
+    const lifetime = config.projectileLifetime;
+    if (!(speed > 0) || !(damage > 0) || !(lifetime > 0)) return null;
+
+    this.ensureBowmanArrowTexture();
+    const sprite = this.scene.add.image(originX, originY, BOWMAN_ARROW_TEXTURE_KEY);
+    if (sprite && typeof sprite.setDisplaySize === 'function') {
+      sprite.setDisplaySize(config.projectileWidth, config.projectileHeight);
+    }
+    if (sprite && typeof sprite.setRotation === 'function') {
+      sprite.setRotation(Math.atan2(dirY, dirX));
+    }
+    this.applyProjectileDepth(sprite, originY);
+
+    const safeTime = Number.isFinite(time) ? time : 0;
+    const maxTravel = speed * (lifetime / 1000) + BOWMAN_ARROW_BOUNDS_MARGIN;
+    const projectile = {
+      sprite,
+      ownerId: sourceNpc.getData('npcId'),
+      x: originX,
+      y: originY,
+      startX: originX,
+      startY: originY,
+      vx: dirX * speed,
+      vy: dirY * speed,
+      damage,
+      expireTime: safeTime + lifetime,
+      maxTravelSq: maxTravel * maxTravel,
+      active: true,
+      processed: false
+    };
+    this.projectiles.push(projectile);
+    return projectile;
+  }
+
+  applyProjectileDepth(sprite, worldY) {
+    if (!sprite) return;
+    if (this.scene && typeof this.scene.updateWorldDepth === 'function') {
+      this.scene.updateWorldDepth(sprite);
+    } else if (typeof sprite.setDepth === 'function') {
+      const displayHeight = Number.isFinite(sprite.displayHeight) ? sprite.displayHeight : 0;
+      sprite.setDepth((worldY + displayHeight / 2) * 0.1);
+    }
+  }
+
+  getPlayerHitRect() {
+    const player = this.scene && this.scene.player;
+    if (!player || player.destroyed || player.active === false) return null;
+    if (this.scene.playerStatsModel
+      && typeof this.scene.playerStatsModel.isDead === 'function'
+      && this.scene.playerStatsModel.isDead()) {
+      return null;
+    }
+    if (!Number.isFinite(player.x) || !Number.isFinite(player.y)) return null;
+
+    let halfW = BOWMAN_PLAYER_HIT_HALF_DEFAULT;
+    let halfH = BOWMAN_PLAYER_HIT_HALF_DEFAULT;
+    const body = player.body;
+    if (body && Number.isFinite(body.width) && body.width > 0) halfW = body.width / 2;
+    if (body && Number.isFinite(body.height) && body.height > 0) halfH = body.height / 2;
+    return {
+      minX: player.x - halfW,
+      minY: player.y - halfH,
+      maxX: player.x + halfW,
+      maxY: player.y + halfH
+    };
+  }
+
+  rectsIntersect(aMinX, aMinY, aMaxX, aMaxY, bMinX, bMinY, bMaxX, bMaxY) {
+    return aMinX <= bMaxX && aMaxX >= bMinX && aMinY <= bMaxY && aMaxY >= bMinY;
+  }
+
+  projectileHitsObstacle(projectile) {
+    const aMinX = projectile.x - BOWMAN_ARROW_HIT_HALF;
+    const aMinY = projectile.y - BOWMAN_ARROW_HIT_HALF;
+    const aMaxX = projectile.x + BOWMAN_ARROW_HIT_HALF;
+    const aMaxY = projectile.y + BOWMAN_ARROW_HIT_HALF;
+    for (let i = 0; i < this.obstacleRects.length; i += 1) {
+      const rect = this.obstacleRects[i];
+      if (this.rectsIntersect(aMinX, aMinY, aMaxX, aMaxY, rect.minX, rect.minY, rect.maxX, rect.maxY)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  updateProjectiles(time, delta) {
+    if (this.destroyed) return;
+    if (!this.projectiles.length) return;
+    const safeDelta = Number.isFinite(delta) && delta > 0 ? delta : 0;
+    const dt = safeDelta / 1000;
+    const safeTime = Number.isFinite(time) ? time : 0;
+    const playerRect = this.getPlayerHitRect();
+
+    this.projectiles.slice().forEach((projectile) => {
+      if (!projectile.active) return;
+
+      projectile.x += projectile.vx * dt;
+      projectile.y += projectile.vy * dt;
+      if (!Number.isFinite(projectile.x) || !Number.isFinite(projectile.y)) {
+        this.removeProjectile(projectile);
+        return;
+      }
+
+      if (projectile.sprite && !projectile.sprite.destroyed) {
+        projectile.sprite.x = projectile.x;
+        projectile.sprite.y = projectile.y;
+        this.applyProjectileDepth(projectile.sprite, projectile.y);
+      }
+
+      // Lifetime expiry.
+      if (safeTime >= projectile.expireTime) {
+        this.removeProjectile(projectile);
+        return;
+      }
+
+      // Reasonable travel bounds.
+      const travelX = projectile.x - projectile.startX;
+      const travelY = projectile.y - projectile.startY;
+      if (travelX * travelX + travelY * travelY > projectile.maxTravelSq) {
+        this.removeProjectile(projectile);
+        return;
+      }
+
+      // TREE / ROCK collision.
+      if (this.projectileHitsObstacle(projectile)) {
+        this.removeProjectile(projectile);
+        return;
+      }
+
+      // Player hit: single damage via the public API, then destroy.
+      if (playerRect && !projectile.processed) {
+        const hitsPlayer = this.rectsIntersect(
+          projectile.x - BOWMAN_ARROW_HIT_HALF,
+          projectile.y - BOWMAN_ARROW_HIT_HALF,
+          projectile.x + BOWMAN_ARROW_HIT_HALF,
+          projectile.y + BOWMAN_ARROW_HIT_HALF,
+          playerRect.minX,
+          playerRect.minY,
+          playerRect.maxX,
+          playerRect.maxY
+        );
+        if (hitsPlayer) {
+          projectile.processed = true;
+          if (this.scene && typeof this.scene.damagePlayer === 'function') {
+            this.scene.damagePlayer(projectile.damage, projectile.ownerId);
+          }
+          this.removeProjectile(projectile);
+        }
+      }
+    });
+  }
+
+  removeProjectile(projectile) {
+    if (!projectile) return false;
+    projectile.active = false;
+    projectile.processed = true;
+    const sprite = projectile.sprite;
+    projectile.sprite = null;
+    if (sprite && !sprite.destroyed && typeof sprite.destroy === 'function') {
+      sprite.destroy();
+    }
+    const index = this.projectiles.indexOf(projectile);
+    if (index >= 0) this.projectiles.splice(index, 1);
+    return true;
+  }
+
+  removeProjectilesByOwner(ownerId) {
+    if (typeof ownerId !== 'string' || ownerId.length === 0) return;
+    this.projectiles.slice().forEach((projectile) => {
+      if (projectile.ownerId === ownerId) this.removeProjectile(projectile);
+    });
+  }
+
+  clearProjectiles() {
+    this.projectiles.slice().forEach((projectile) => this.removeProjectile(projectile));
+    this.projectiles = [];
   }
 
   destroyHostileControllerForNpc(npcObject) {
@@ -685,6 +949,7 @@ class ChunkInstance {
     });
     this.ownedObjectIds = [];
 
+    this.clearProjectiles();
     this.destroyNpcs();
 
     if (this.ground) {
