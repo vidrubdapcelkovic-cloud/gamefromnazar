@@ -24,6 +24,7 @@ const requiredRelativePaths = [
   'src/world/WorldGrid.js',
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
+  'src/world/RiverGenerator.js',
   'src/world/ChunkGenerator.js',
   'src/world/ChunkResourceIds.js',
   'src/world/ChunkNpcIds.js',
@@ -156,6 +157,7 @@ const nazarTextureData = fs.readFileSync(requireFile('src/generated/NazarTexture
 const worldGrid = fs.readFileSync(requireFile('src/world/WorldGrid.js'), 'utf8');
 const chunkMath = fs.readFileSync(requireFile('src/world/ChunkMath.js'), 'utf8');
 const seededRandom = fs.readFileSync(requireFile('src/world/SeededRandom.js'), 'utf8');
+const riverGenerator = fs.readFileSync(requireFile('src/world/RiverGenerator.js'), 'utf8');
 const chunkGenerator = fs.readFileSync(requireFile('src/world/ChunkGenerator.js'), 'utf8');
 const chunkResourceIds = fs.readFileSync(requireFile('src/world/ChunkResourceIds.js'), 'utf8');
 const chunkNpcIds = fs.readFileSync(requireFile('src/world/ChunkNpcIds.js'), 'utf8');
@@ -230,6 +232,7 @@ ${safeScript(nazarTextureData)}
 ${safeScript(worldGrid)}
 ${safeScript(chunkMath)}
 ${safeScript(seededRandom)}
+${safeScript(riverGenerator)}
 ${safeScript(chunkGenerator)}
 ${safeScript(chunkResourceIds)}
 ${safeScript(chunkNpcIds)}
@@ -295,6 +298,7 @@ const pagesHtml = `<!doctype html>
     <script src="./src/world/WorldGrid.js"></script>
     <script src="./src/world/ChunkMath.js"></script>
     <script src="./src/world/SeededRandom.js"></script>
+    <script src="./src/world/RiverGenerator.js"></script>
     <script src="./src/world/ChunkGenerator.js"></script>
     <script src="./src/world/ChunkResourceIds.js"></script>
     <script src="./src/world/ChunkNpcIds.js"></script>
@@ -373,6 +377,7 @@ fs.copyFileSync(requireFile('src/generated/NazarTextureData.js'), path.join(docs
 fs.copyFileSync(requireFile('src/world/WorldGrid.js'), path.join(docsWorldDirectory, 'WorldGrid.js'));
 fs.copyFileSync(requireFile('src/world/ChunkMath.js'), path.join(docsWorldDirectory, 'ChunkMath.js'));
 fs.copyFileSync(requireFile('src/world/SeededRandom.js'), path.join(docsWorldDirectory, 'SeededRandom.js'));
+fs.copyFileSync(requireFile('src/world/RiverGenerator.js'), path.join(docsWorldDirectory, 'RiverGenerator.js'));
 fs.copyFileSync(requireFile('src/world/ChunkGenerator.js'), path.join(docsWorldDirectory, 'ChunkGenerator.js'));
 fs.copyFileSync(requireFile('src/world/ChunkResourceIds.js'), path.join(docsWorldDirectory, 'ChunkResourceIds.js'));
 fs.copyFileSync(requireFile('src/world/ChunkNpcIds.js'), path.join(docsWorldDirectory, 'ChunkNpcIds.js'));

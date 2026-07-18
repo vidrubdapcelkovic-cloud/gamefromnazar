@@ -25,12 +25,40 @@ class ChunkGenerator {
       && localY <= clearMax
     );
 
+    // River water mask is computed from the world seed and absolute coordinates
+    // (see RiverGenerator) BEFORE any TREE/ROCK/NPC placement. Water cells are a
+    // pure function of position, independent of chunk load order and of the
+    // object/NPC RNG streams below.
+    const isWaterCell = (localX, localY) => {
+      const worldTile = ChunkMath.chunkLocalToWorldTile(chunkX, chunkY, localX, localY);
+      return RiverGenerator.isWaterTile(worldSeed, worldTile.tileX, worldTile.tileY);
+    };
+
+    const water = [];
+    for (let localY = 0; localY < chunkSize; localY += 1) {
+      for (let localX = 0; localX < chunkSize; localX += 1) {
+        if (!isWaterCell(localX, localY)) continue;
+        water.push({
+          type: 'RIVER_WATER',
+          localTileX: localX,
+          localTileY: localY,
+          // Stable id mirrors buildChunkResourceId's format without coupling the
+          // generator to that module: chunk_X_Y_RIVER_WATER_localX_localY.
+          id: `chunk_${chunkX}_${chunkY}_RIVER_WATER_${localX}_${localY}`
+        });
+      }
+    }
+
     const tryPlace = (type, localX, localY, variant) => {
       if (!Number.isInteger(localX) || !Number.isInteger(localY)) return false;
       if (localX < 0 || localX >= chunkSize || localY < 0 || localY >= chunkSize) return false;
       const key = `${localX},${localY}`;
       if (occupied.has(key) || isInStartClearZone(localX, localY)) return false;
       occupied.add(key);
+      // Water consumes the candidate slot but places no object. This keeps the
+      // existing RNG draw sequence identical, so object positions/IDs outside
+      // water are unchanged; objects that would land on water are simply omitted.
+      if (isWaterCell(localX, localY)) return true;
       objects.push({
         type,
         localTileX: localX,
@@ -76,13 +104,14 @@ class ChunkGenerator {
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         // Current terrain is always walkable grass; still skip occupied resource cells.
         occupied.add(key);
+        placedNpc = true;
+        if (isWaterCell(localX, localY)) break;
         npcs.push({
           type: 'RABBIT',
           index: 0,
           localTileX: localX,
           localTileY: localY
         });
-        placedNpc = true;
       }
     }
 
@@ -98,13 +127,14 @@ class ChunkGenerator {
         // occupied already contains TREE/ROCK cells and any RABBIT tile.
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
+        placedPig = true;
+        if (isWaterCell(localX, localY)) break;
         npcs.push({
           type: 'PIG',
           index: 0,
           localTileX: localX,
           localTileY: localY
         });
-        placedPig = true;
       }
     }
 
@@ -119,13 +149,14 @@ class ChunkGenerator {
         const key = `${localX},${localY}`;
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
+        placedLlama = true;
+        if (isWaterCell(localX, localY)) break;
         npcs.push({
           type: 'LLAMA',
           index: 0,
           localTileX: localX,
           localTileY: localY
         });
-        placedLlama = true;
       }
     }
 
@@ -140,13 +171,14 @@ class ChunkGenerator {
         const key = `${localX},${localY}`;
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
+        placedBuffalo = true;
+        if (isWaterCell(localX, localY)) break;
         npcs.push({
           type: 'BUFFALO',
           index: 0,
           localTileX: localX,
           localTileY: localY
         });
-        placedBuffalo = true;
       }
     }
 
@@ -165,13 +197,14 @@ class ChunkGenerator {
         const key = `${localX},${localY}`;
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
+        placedTallMonster = true;
+        if (isWaterCell(localX, localY)) break;
         npcs.push({
           type: 'TALL_MONSTER',
           index: 0,
           localTileX: localX,
           localTileY: localY
         });
-        placedTallMonster = true;
       }
     }
 
@@ -190,13 +223,14 @@ class ChunkGenerator {
         const key = `${localX},${localY}`;
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
+        placedElectricman = true;
+        if (isWaterCell(localX, localY)) break;
         npcs.push({
           type: 'ELECTRICMAN',
           index: 0,
           localTileX: localX,
           localTileY: localY
         });
-        placedElectricman = true;
       }
     }
 
@@ -216,13 +250,14 @@ class ChunkGenerator {
         const key = `${localX},${localY}`;
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
+        placedBowman = true;
+        if (isWaterCell(localX, localY)) break;
         npcs.push({
           type: 'BOWMAN',
           index: 0,
           localTileX: localX,
           localTileY: localY
         });
-        placedBowman = true;
       }
     }
 
@@ -231,6 +266,7 @@ class ChunkGenerator {
       chunkY,
       terrain,
       objects,
+      water,
       npcs,
       spawnPoints
     };

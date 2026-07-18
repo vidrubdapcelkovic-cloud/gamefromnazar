@@ -21,6 +21,7 @@ const bundle = [
   'src/data/HostileNpcConfig.js',
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
+  'src/world/RiverGenerator.js',
   'src/world/ChunkGenerator.js',
   'src/world/ChunkNpcIds.js',
   'src/world/ChunkNpcWander.js',

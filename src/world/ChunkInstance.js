@@ -9,6 +9,9 @@ const BOWMAN_OBSTACLE_HALF = Object.freeze({
   TREE: { x: 12, y: 16 }
 });
 
+// Static procedural river tile. One texture is shared by every water sprite.
+const RIVER_WATER_TEXTURE_KEY = 'river-water-texture';
+
 class ChunkInstance {
   constructor(scene, chunkData, options) {
     this.scene = scene;
@@ -30,9 +33,12 @@ class ChunkInstance {
     this.npcBlockedCells = new Set();
     // Active BOWMAN arrows live only here (runtime-only, never serialised).
     this.projectiles = [];
+    // Static water sprites/blockers, created and destroyed with the chunk.
+    this.waterBlockers = [];
     this.obstacleRects = this.buildObstacleRects(chunkData);
     this.createGround(chunkData);
     this.createObjects(chunkData);
+    this.createWater(chunkData);
     this.createNpcs(chunkData);
   }
 
@@ -175,6 +181,87 @@ class ChunkInstance {
     });
   }
 
+  ensureWaterTexture() {
+    if (!this.scene || !this.scene.textures) return;
+    if (typeof this.scene.textures.exists === 'function'
+      && this.scene.textures.exists(RIVER_WATER_TEXTURE_KEY)) {
+      return;
+    }
+    if (!this.scene.make || typeof this.scene.make.graphics !== 'function') return;
+    const tileSize = ChunkMath.TILE_SIZE;
+    const graphics = this.scene.make.graphics({ x: 0, y: 0, add: false });
+    // Calm water base plus a few static ripples. Deterministic, tile-sized.
+    graphics.fillStyle(0x2f6f9f, 1);
+    graphics.fillRect(0, 0, tileSize, tileSize);
+    graphics.fillStyle(0x3f86bb, 1);
+    graphics.fillRect(2, 6, 12, 2);
+    graphics.fillRect(18, 14, 11, 2);
+    graphics.fillRect(6, 22, 14, 2);
+    graphics.fillStyle(0x276089, 1);
+    graphics.fillRect(10, 12, 10, 1);
+    graphics.fillRect(4, 26, 12, 1);
+    graphics.generateTexture(RIVER_WATER_TEXTURE_KEY, tileSize, tileSize);
+    graphics.destroy();
+  }
+
+  createWater(chunkData) {
+    if (this.destroyed) return;
+    const water = Array.isArray(chunkData && chunkData.water) ? chunkData.water : [];
+    if (!water.length) return;
+    this.ensureWaterTexture();
+    const tileSize = ChunkMath.TILE_SIZE;
+    water.forEach((tile) => {
+      if (!tile || !Number.isInteger(tile.localTileX) || !Number.isInteger(tile.localTileY)) return;
+      const center = ChunkMath.localTileCenterWorld(
+        this.chunkX,
+        this.chunkY,
+        tile.localTileX,
+        tile.localTileY
+      );
+      // Reuse the shared blocking group so the existing player collider stops the
+      // player at water without a separate collision system. Falls back to a
+      // plain image only if no blocking group is available (defensive).
+      let sprite = null;
+      if (this.blockingGroup && typeof this.blockingGroup.create === 'function') {
+        sprite = this.blockingGroup.create(center.x, center.y, RIVER_WATER_TEXTURE_KEY);
+      } else if (this.scene && this.scene.add && typeof this.scene.add.image === 'function') {
+        sprite = this.scene.add.image(center.x, center.y, RIVER_WATER_TEXTURE_KEY);
+      }
+      if (!sprite) return;
+
+      if (sprite.body) {
+        if (typeof sprite.body.setSize === 'function') sprite.body.setSize(tileSize, tileSize);
+        if (typeof sprite.body.setOffset === 'function') sprite.body.setOffset(0, 0);
+        if (typeof sprite.refreshBody === 'function') sprite.refreshBody();
+      }
+      // Keep water above the grass terrain but below every Y-sorted entity.
+      if (typeof sprite.setDepth === 'function') {
+        sprite.setDepth(ChunkMath.CHUNK_TERRAIN_DEPTH + 1);
+      }
+      if (typeof sprite.setDataEnabled === 'function') sprite.setDataEnabled();
+      if (typeof sprite.setData === 'function') {
+        sprite.setData('type', 'RIVER_WATER');
+        sprite.setData(
+          'id',
+          typeof tile.id === 'string'
+            ? tile.id
+            : `chunk_${this.chunkX}_${this.chunkY}_RIVER_WATER_${tile.localTileX}_${tile.localTileY}`
+        );
+        sprite.setData('chunkKey', this.key);
+      }
+      this.waterBlockers.push(sprite);
+    });
+  }
+
+  clearWater() {
+    this.waterBlockers.slice().forEach((sprite) => {
+      if (sprite && !sprite.destroyed && typeof sprite.destroy === 'function') {
+        sprite.destroy();
+      }
+    });
+    this.waterBlockers = [];
+  }
+
   ensureRabbitPlaceholderTexture() {
     const textureKey = 'rabbit-placeholder';
     if (!this.scene || !this.scene.textures || this.scene.textures.exists(textureKey)) return;
@@ -202,6 +289,12 @@ class ChunkInstance {
       if (!objectData || (objectData.type !== 'TREE' && objectData.type !== 'ROCK')) return;
       if (!Number.isInteger(objectData.localTileX) || !Number.isInteger(objectData.localTileY)) return;
       blockedCells.add(`${objectData.localTileX},${objectData.localTileY}`);
+    });
+    // Water is impassable for wandering/chasing NPCs, exactly like TREE/ROCK.
+    const water = Array.isArray(chunkData && chunkData.water) ? chunkData.water : [];
+    water.forEach((tile) => {
+      if (!tile || !Number.isInteger(tile.localTileX) || !Number.isInteger(tile.localTileY)) return;
+      blockedCells.add(`${tile.localTileX},${tile.localTileY}`);
     });
     return blockedCells;
   }
@@ -950,6 +1043,7 @@ class ChunkInstance {
     this.ownedObjectIds = [];
 
     this.clearProjectiles();
+    this.clearWater();
     this.destroyNpcs();
 
     if (this.ground) {
