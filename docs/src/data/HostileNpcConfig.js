@@ -32,6 +32,31 @@ const HostileNpcConfig = Object.freeze({
     attackCooldown: 1000,
     chaseSpeed: 55,
     returnRadius: 12
+  }),
+  ELECTRICMAN: Object.freeze({
+    type: 'ELECTRICMAN',
+    textureKey: 'electricman-texture',
+    maxHp: 20,
+    lootType: 'RAW_MEAT',
+    lootQuantity: 2,
+    // Prepared texture 991x1305 (content 959x1273 + 16px padding, aspect ~0.753).
+    // Visible content height ~100 world px; full display includes transparent padding.
+    renderWidth: 78,
+    renderHeight: 103,
+    // Body covers central torso / pelvis / upper legs in texture pixels.
+    bodyWidth: 423,
+    bodyHeight: 510,
+    bodyOffsetX: 284,
+    bodyOffsetY: 423,
+    wanderTweenDuration: 700,
+    wanderPauseDuration: 1000,
+    detectionRadius: 170,
+    disengageRadius: 250,
+    attackRange: 28,
+    attackDamage: 4,
+    attackCooldown: 900,
+    chaseSpeed: 68,
+    returnRadius: 12
   })
 });
 

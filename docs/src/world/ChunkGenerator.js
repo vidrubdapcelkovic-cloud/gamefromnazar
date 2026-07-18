@@ -175,6 +175,31 @@ class ChunkGenerator {
       }
     }
 
+    // ELECTRICMAN uses its own enemy stream so TALL_MONSTER placement stays unchanged.
+    const electricmanRng = SeededRandom.fromParts(
+      worldSeed,
+      chunkX,
+      chunkY,
+      'chunk-enemies-electricman'
+    );
+    if (electricmanRng.next() < 0.12) {
+      let placedElectricman = false;
+      for (let attempt = 0; attempt < 48 && !placedElectricman; attempt += 1) {
+        const localX = electricmanRng.nextInt(0, chunkSize);
+        const localY = electricmanRng.nextInt(0, chunkSize);
+        const key = `${localX},${localY}`;
+        if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
+        occupied.add(key);
+        npcs.push({
+          type: 'ELECTRICMAN',
+          index: 0,
+          localTileX: localX,
+          localTileY: localY
+        });
+        placedElectricman = true;
+      }
+    }
+
     return {
       chunkX,
       chunkY,

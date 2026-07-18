@@ -18,6 +18,7 @@ const requiredRelativePaths = [
   'src/generated/LlamaTextureData.js',
   'src/generated/BuffaloTextureData.js',
   'src/generated/TallMonsterTextureData.js',
+  'src/generated/ElectricmanTextureData.js',
   'src/world/WorldGrid.js',
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
@@ -111,6 +112,12 @@ const tallMonsterTextureModuleSize = generateEmbeddedTextureModule(
   'TALL_MONSTER_TEXTURE_DATA_URL',
   'TALL_MONSTER'
 );
+const electricmanTextureModuleSize = generateEmbeddedTextureModule(
+  'assets/generated/electricman.png',
+  'src/generated/ElectricmanTextureData.js',
+  'ELECTRICMAN_TEXTURE_DATA_URL',
+  'ELECTRICMAN'
+);
 
 requiredRelativePaths.forEach(requireFile);
 
@@ -129,6 +136,7 @@ const pigTextureData = fs.readFileSync(requireFile('src/generated/PigTextureData
 const llamaTextureData = fs.readFileSync(requireFile('src/generated/LlamaTextureData.js'), 'utf8');
 const buffaloTextureData = fs.readFileSync(requireFile('src/generated/BuffaloTextureData.js'), 'utf8');
 const tallMonsterTextureData = fs.readFileSync(requireFile('src/generated/TallMonsterTextureData.js'), 'utf8');
+const electricmanTextureData = fs.readFileSync(requireFile('src/generated/ElectricmanTextureData.js'), 'utf8');
 const worldGrid = fs.readFileSync(requireFile('src/world/WorldGrid.js'), 'utf8');
 const chunkMath = fs.readFileSync(requireFile('src/world/ChunkMath.js'), 'utf8');
 const seededRandom = fs.readFileSync(requireFile('src/world/SeededRandom.js'), 'utf8');
@@ -200,6 +208,7 @@ ${safeScript(pigTextureData)}
 ${safeScript(llamaTextureData)}
 ${safeScript(buffaloTextureData)}
 ${safeScript(tallMonsterTextureData)}
+${safeScript(electricmanTextureData)}
 ${safeScript(worldGrid)}
 ${safeScript(chunkMath)}
 ${safeScript(seededRandom)}
@@ -262,6 +271,7 @@ const pagesHtml = `<!doctype html>
     <script src="./src/generated/LlamaTextureData.js"></script>
     <script src="./src/generated/BuffaloTextureData.js"></script>
     <script src="./src/generated/TallMonsterTextureData.js"></script>
+    <script src="./src/generated/ElectricmanTextureData.js"></script>
     <script src="./src/world/WorldGrid.js"></script>
     <script src="./src/world/ChunkMath.js"></script>
     <script src="./src/world/SeededRandom.js"></script>
@@ -337,6 +347,7 @@ fs.copyFileSync(requireFile('src/generated/PigTextureData.js'), path.join(docsGe
 fs.copyFileSync(requireFile('src/generated/LlamaTextureData.js'), path.join(docsGeneratedDirectory, 'LlamaTextureData.js'));
 fs.copyFileSync(requireFile('src/generated/BuffaloTextureData.js'), path.join(docsGeneratedDirectory, 'BuffaloTextureData.js'));
 fs.copyFileSync(requireFile('src/generated/TallMonsterTextureData.js'), path.join(docsGeneratedDirectory, 'TallMonsterTextureData.js'));
+fs.copyFileSync(requireFile('src/generated/ElectricmanTextureData.js'), path.join(docsGeneratedDirectory, 'ElectricmanTextureData.js'));
 fs.copyFileSync(requireFile('src/world/WorldGrid.js'), path.join(docsWorldDirectory, 'WorldGrid.js'));
 fs.copyFileSync(requireFile('src/world/ChunkMath.js'), path.join(docsWorldDirectory, 'ChunkMath.js'));
 fs.copyFileSync(requireFile('src/world/SeededRandom.js'), path.join(docsWorldDirectory, 'SeededRandom.js'));
@@ -381,6 +392,7 @@ console.log(`PIG texture (встроен): src/generated/PigTextureData.js (${pi
 console.log(`LLAMA texture (встроен): src/generated/LlamaTextureData.js (${llamaTextureModuleSize} байт)`);
 console.log(`BUFFALO texture (встроен): src/generated/BuffaloTextureData.js (${buffaloTextureModuleSize} байт)`);
 console.log(`TALL_MONSTER texture (встроен): src/generated/TallMonsterTextureData.js (${tallMonsterTextureModuleSize} байт)`);
+console.log(`ELECTRICMAN texture (встроен): src/generated/ElectricmanTextureData.js (${electricmanTextureModuleSize} байт)`);
 console.log(`Автономная версия: ${autonomousPath} (${autonomousSize} байт)`);
 console.log(`GitHub Pages: ${pagesIndexPath} (${pagesIndexSize} байт)`);
 console.log(`Phaser: ${path.join(docsLibDirectory, 'phaser.min.js')} (${fs.statSync(path.join(docsLibDirectory, 'phaser.min.js')).size} байт)`);

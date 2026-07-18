@@ -77,6 +77,14 @@ class GameScene extends Phaser.Scene {
     ) {
       this.load.image('tall-monster-texture', TALL_MONSTER_TEXTURE_DATA_URL);
     }
+    if (
+      typeof ELECTRICMAN_TEXTURE_DATA_URL === 'string'
+      && ELECTRICMAN_TEXTURE_DATA_URL.length > 0
+      && this.textures
+      && !this.textures.exists('electricman-texture')
+    ) {
+      this.load.image('electricman-texture', ELECTRICMAN_TEXTURE_DATA_URL);
+    }
   }
 
   create() {
