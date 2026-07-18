@@ -3,13 +3,21 @@
  *
  * Input/output are the same path. The script:
  * 1. Fully reads the PNG into memory first (safe when input === output).
- * 2. Samples the border to estimate the greenscreen key colour.
+ * 2. Samples the border to estimate the greenscreen key colour. If the border is
+ *    already transparent (re-running on a prepared asset), the greenscreen key is
+ *    instead derived from confidently-green opaque pixels still present in content.
  * 3. Flood-fills background from the outer perimeter to alpha=0.
- * 4. Applies a minimal local green-fringe decontamination on silhouette edges.
- * 5. Crops to the opaque content bbox + 16 px transparent padding (no resize).
- * 6. Writes RGBA PNG via a temp file, then atomically replaces the production asset.
+ * 4. Removes isolated greenscreen remnants trapped in enclosed regions the
+ *    perimeter flood-fill cannot reach (e.g. the openings of the bow between the
+ *    bow curve, string and arm). Only pixels confidently close to the greenscreen
+ *    key colour are removed, so real character/wood/string/bow colours survive.
+ * 5. Applies a minimal local green-fringe decontamination on silhouette edges and
+ *    around the newly-opened interior holes.
+ * 6. Crops to the opaque content bbox + 16 px transparent padding (no resize).
+ * 7. Writes RGBA PNG via a temp file, then atomically replaces the production asset.
  *
- * Re-running on the already-prepared RGBA result is idempotent.
+ * Re-running on the already-prepared RGBA result is idempotent: once the enclosed
+ * greenscreen is gone, no confident greenscreen pixels remain to key on.
  *
  * Alpha content threshold for crop: alpha > 4.
  * Padding: 16 px (clamped to canvas edges).
@@ -30,6 +38,15 @@ const KEY_DISTANCE_SQ = 70 * 70;
 const FRINGE_DOMINANCE = 12;
 const WHITE_MIN = 230;
 const WHITE_KEY_DISTANCE_SQ = 35 * 35;
+// Interior greenscreen removal (enclosed remnants the flood-fill cannot reach).
+// Deliberately stricter than the perimeter test so only confident, highly
+// saturated greenscreen is stripped and real image greens are preserved.
+const INNER_GREEN_DOMINANCE = 40;
+const INNER_GREEN_MIN = 120;
+const INNER_KEY_DISTANCE_SQ = 70 * 70;
+// Minimum confident-green opaque samples required to derive a key from content
+// when the perimeter is already transparent (re-run on a prepared asset).
+const DERIVE_MIN_SAMPLES = 40;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -200,6 +217,80 @@ function sampleBackgroundKey(rgba, width, height) {
     };
   }
   return null;
+}
+
+// A pixel is confidently greenscreen when it is a highly saturated green that
+// sits close to the derived key colour. Used only for interior remnant removal.
+function isConfidentGreenscreen(r, g, b, key) {
+  if (!(g > r + INNER_GREEN_DOMINANCE && g > b + INNER_GREEN_DOMINANCE && g >= INNER_GREEN_MIN)) {
+    return false;
+  }
+  const dr = r - key.r;
+  const dg = g - key.g;
+  const db = b - key.b;
+  return (dr * dr + dg * dg + db * db) <= INNER_KEY_DISTANCE_SQ;
+}
+
+// Fallback key estimation for already-prepared assets whose border is transparent.
+// Averages confidently-green opaque pixels anywhere in the image. Returns null
+// once no such pixels remain, which keeps the pipeline idempotent.
+function deriveGreenKeyFromContent(rgba, width, height) {
+  let count = 0;
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  for (let i = 0; i < width * height; i += 1) {
+    const o = i * 4;
+    if (rgba[o + 3] <= ALPHA_THRESHOLD) continue;
+    const r = rgba[o];
+    const g = rgba[o + 1];
+    const b = rgba[o + 2];
+    if (g > r + INNER_GREEN_DOMINANCE && g > b + INNER_GREEN_DOMINANCE && g >= INNER_GREEN_MIN) {
+      count += 1;
+      sumR += r;
+      sumG += g;
+      sumB += b;
+    }
+  }
+  if (count < DERIVE_MIN_SAMPLES) return null;
+  return {
+    kind: 'green',
+    r: Math.round(sumR / count),
+    g: Math.round(sumG / count),
+    b: Math.round(sumB / count),
+    samples: count,
+    derived: true
+  };
+}
+
+// Strips greenscreen pixels the perimeter flood-fill left behind (fully enclosed
+// interior regions such as the bow openings). Only confident greenscreen is
+// removed; the surrounding fringe is later cleaned by decontaminateFringe.
+function removeInteriorGreen(rgba, width, height, bg, key) {
+  let removed = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const idx = y * width + x;
+      if (bg[idx]) continue;
+      const o = idx * 4;
+      if (rgba[o + 3] <= ALPHA_THRESHOLD) continue;
+      if (!isConfidentGreenscreen(rgba[o], rgba[o + 1], rgba[o + 2], key)) continue;
+      rgba[o + 3] = 0;
+      removed += 1;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  return {
+    removed,
+    bbox: removed > 0 ? { minX, minY, maxX, maxY } : null
+  };
 }
 
 function isBackground(r, g, b, key) {
@@ -386,9 +477,14 @@ function prepareBowmanAsset() {
   const inputPath = TARGET_PATH;
   const source = readPng(inputPath);
   const rgba = toRgbaBuffer(source);
-  const key = sampleBackgroundKey(rgba, source.width, source.height);
+  // Prefer the perimeter key; fall back to content when the border is already
+  // transparent (re-running on a previously prepared asset).
+  const key = sampleBackgroundKey(rgba, source.width, source.height)
+    || deriveGreenKeyFromContent(rgba, source.width, source.height);
 
   let keyed = 0;
+  let interiorRemoved = 0;
+  let interiorBBox = null;
   let fringeTouched = 0;
   let usedKey = null;
 
@@ -396,6 +492,11 @@ function prepareBowmanAsset() {
     usedKey = key;
     const fill = floodFillBackground(rgba, source.width, source.height, key);
     keyed = fill.keyed;
+    if (key.kind === 'green') {
+      const interior = removeInteriorGreen(rgba, source.width, source.height, fill.bg, key);
+      interiorRemoved = interior.removed;
+      interiorBBox = interior.bbox;
+    }
     fringeTouched = decontaminateFringe(rgba, source.width, source.height, fill.bg, key);
   }
 
@@ -457,6 +558,8 @@ function prepareBowmanAsset() {
     sourceHeight: source.height,
     key: usedKey,
     keyed,
+    interiorRemoved,
+    interiorBBox,
     fringeTouched,
     alphaThreshold: ALPHA_THRESHOLD,
     padding: PADDING,
@@ -481,6 +584,8 @@ if (require.main === module) {
     source: `${result.sourceWidth}x${result.sourceHeight}`,
     key: result.key,
     keyed: result.keyed,
+    interiorRemoved: result.interiorRemoved,
+    interiorBBox: result.interiorBBox,
     fringeTouched: result.fringeTouched,
     content: `${result.contentBBox.contentWidth}x${result.contentBBox.contentHeight}`,
     contentBBox: {
@@ -502,8 +607,14 @@ if (require.main === module) {
 module.exports = {
   ALPHA_THRESHOLD,
   PADDING,
+  INNER_GREEN_DOMINANCE,
+  INNER_GREEN_MIN,
+  INNER_KEY_DISTANCE_SQ,
   TARGET_RELATIVE,
   prepareBowmanAsset,
+  deriveGreenKeyFromContent,
+  isConfidentGreenscreen,
+  toRgbaBuffer,
   readPng,
   findContentBBox
 };

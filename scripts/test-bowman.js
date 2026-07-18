@@ -264,6 +264,107 @@ const TEX_H = 1169;
   assertEqual(maxX - minX + 1, CONTENT_W, 'content width');
   assertEqual(maxY - minY + 1, CONTENT_H, 'content height');
 
+  // Greenscreen remnant defect guard.
+  // Historically bright greenscreen (~14,245,16) survived inside the enclosed
+  // bow openings because the perimeter flood-fill could not reach them and they
+  // were fully opaque. Scan opaque content for confident bright-green pixels and
+  // reject any mass or connected remnant. A handful of isolated, low-saturation
+  // natural-green pixels from the artwork are tolerated; large or connected
+  // clusters of bright greenscreen are not.
+  {
+    const GREEN_REFERENCE = { r: 14, g: 245, b: 16 };
+    const DOMINANCE = prepare.INNER_GREEN_DOMINANCE;
+    const MIN_G = prepare.INNER_GREEN_MIN;
+    const DIST_SQ = prepare.INNER_KEY_DISTANCE_SQ;
+    const OPAQUE = 32;
+    const MAX_TOTAL = 24; // isolated natural pixels only
+    const MAX_COMPONENT = 12; // no mass / connected greenscreen remnant
+
+    const isBrightGreen = (o) => {
+      const r = pixels[o];
+      const g = pixels[o + 1];
+      const b = pixels[o + 2];
+      const a = pixels[o + 3];
+      if (a <= OPAQUE) return false;
+      if (!(g > r + DOMINANCE && g > b + DOMINANCE && g >= MIN_G)) return false;
+      const dr = r - GREEN_REFERENCE.r;
+      const dg = g - GREEN_REFERENCE.g;
+      const db = b - GREEN_REFERENCE.b;
+      return (dr * dr + dg * dg + db * db) <= DIST_SQ;
+    };
+
+    const visited = new Uint8Array(width * height);
+    let total = 0;
+    let largest = 0;
+    let largestBBox = null;
+    let overallMinX = width;
+    let overallMinY = height;
+    let overallMaxX = -1;
+    let overallMaxY = -1;
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const idx = y * width + x;
+        if (visited[idx]) continue;
+        if (!isBrightGreen(idx * 4)) { visited[idx] = 1; continue; }
+        const stack = [idx];
+        visited[idx] = 1;
+        let size = 0;
+        let cMinX = x;
+        let cMinY = y;
+        let cMaxX = x;
+        let cMaxY = y;
+        while (stack.length) {
+          const cur = stack.pop();
+          const cx = cur % width;
+          const cy = (cur - cx) / width;
+          size += 1;
+          total += 1;
+          if (cx < cMinX) cMinX = cx;
+          if (cy < cMinY) cMinY = cy;
+          if (cx > cMaxX) cMaxX = cx;
+          if (cy > cMaxY) cMaxY = cy;
+          if (cx < overallMinX) overallMinX = cx;
+          if (cy < overallMinY) overallMinY = cy;
+          if (cx > overallMaxX) overallMaxX = cx;
+          if (cy > overallMaxY) overallMaxY = cy;
+          if (cx > 0 && !visited[cur - 1]) {
+            visited[cur - 1] = 1;
+            if (isBrightGreen((cur - 1) * 4)) stack.push(cur - 1);
+          }
+          if (cx + 1 < width && !visited[cur + 1]) {
+            visited[cur + 1] = 1;
+            if (isBrightGreen((cur + 1) * 4)) stack.push(cur + 1);
+          }
+          if (cy > 0 && !visited[cur - width]) {
+            visited[cur - width] = 1;
+            if (isBrightGreen((cur - width) * 4)) stack.push(cur - width);
+          }
+          if (cy + 1 < height && !visited[cur + width]) {
+            visited[cur + width] = 1;
+            if (isBrightGreen((cur + width) * 4)) stack.push(cur + width);
+          }
+        }
+        if (size > largest) {
+          largest = size;
+          largestBBox = { minX: cMinX, minY: cMinY, maxX: cMaxX, maxY: cMaxY };
+        }
+      }
+    }
+
+    if (total > MAX_TOTAL || largest > MAX_COMPONENT) {
+      const overallBBox = total > 0
+        ? { minX: overallMinX, minY: overallMinY, maxX: overallMaxX, maxY: overallMaxY }
+        : null;
+      throw new Error(
+        `Greenscreen remnant detected: total=${total} (max ${MAX_TOTAL}), `
+        + `largestComponent=${largest} (max ${MAX_COMPONENT}), `
+        + `largestBBox=${JSON.stringify(largestBBox)}, `
+        + `overallBBox=${JSON.stringify(overallBBox)}`
+      );
+    }
+  }
+
   const hashBefore = crypto.createHash('sha256').update(buffer).digest('hex');
   const first = prepare.prepareBowmanAsset();
   const second = prepare.prepareBowmanAsset();
@@ -271,6 +372,13 @@ const TEX_H = 1169;
   assertEqual(second.sha256, first.sha256, 'second hash');
   assertEqual(first.newWidth, TEX_W, 'idempotent w');
   assertEqual(first.newHeight, TEX_H, 'idempotent h');
+  assertEqual(second.newWidth, first.newWidth, 'two-run same width');
+  assertEqual(second.newHeight, first.newHeight, 'two-run same height');
+  assertEqual(
+    JSON.stringify(second.contentBBox),
+    JSON.stringify(first.contentBBox),
+    'two-run same content bbox'
+  );
 }
 
 // Runtime melee + persistence (no projectile / ranged)
