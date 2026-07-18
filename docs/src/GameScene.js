@@ -46,7 +46,6 @@ const SLIME_SPAWN_CELLS = Object.freeze([
   Object.freeze({ col: 8, row: 28 }), Object.freeze({ col: 39, row: 28 })
 ]);
 const USE_CHUNKED_WORLD = true;
-const CHUNK_WORLD_DEBUG = true;
 
 class GameScene extends Phaser.Scene {
   constructor() {
@@ -138,7 +137,6 @@ class GameScene extends Phaser.Scene {
     this.useChunkedWorld = USE_CHUNKED_WORLD;
     this.worldSeed = this.resolveWorldSeedForSession();
     this.chunkManager = null;
-    this.chunkDebugText = null;
     this.chunkWorldCleanupDone = false;
     this.createWorld();
     this.createPlayer();
@@ -307,7 +305,6 @@ class GameScene extends Phaser.Scene {
     });
     this.chunkManager.syncAround(this.player.x, this.player.y);
     this.refreshInteractionTargets();
-    this.createChunkDebugOverlay();
   }
 
   registerChunkWorldObject(runtimeObject) {
@@ -394,42 +391,12 @@ class GameScene extends Phaser.Scene {
     this.treeBlockers = this.treeBlockers.filter((object) => object !== runtimeObject.blockerObject);
   }
 
-  createChunkDebugOverlay() {
-    if (!CHUNK_WORLD_DEBUG) return;
-    this.chunkDebugText = this.add.text(12, 12, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#d7ffe0',
-      backgroundColor: '#000000aa'
-    }).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 50).setPadding(6, 4, 6, 4);
-    this.updateChunkDebugOverlay();
-  }
-
-  updateChunkDebugOverlay() {
-    if (!this.chunkDebugText || !this.chunkManager || !this.player) return;
-    const tile = ChunkMath.worldToTile(this.player.x, this.player.y);
-    const chunk = ChunkMath.worldToChunk(this.player.x, this.player.y);
-    this.chunkDebugText.setText([
-      `seed: ${this.worldSeed}`,
-      `tile: ${tile.tileX}, ${tile.tileY}`,
-      `chunk: ${chunk.chunkX}, ${chunk.chunkY}`,
-      `active: ${this.chunkManager.getActiveCount()}`,
-      `pos: ${Math.round(this.player.x)}, ${Math.round(this.player.y)}`,
-      `depth: ${this.player.depth}`,
-      `vis: ${this.player.visible}/${this.player.active}`
-    ].join('\n'));
-  }
-
   cleanupChunkedWorld() {
     if (this.chunkWorldCleanupDone) return;
     this.chunkWorldCleanupDone = true;
     if (this.chunkManager) {
       this.chunkManager.destroy();
       this.chunkManager = null;
-    }
-    if (this.chunkDebugText) {
-      this.chunkDebugText.destroy();
-      this.chunkDebugText = null;
     }
     this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.cleanupChunkedWorld, this);
     this.events.off(Phaser.Scenes.Events.DESTROY, this.cleanupChunkedWorld, this);
@@ -2980,7 +2947,6 @@ class GameScene extends Phaser.Scene {
         this.player.setVisible(true);
         this.updateWorldDepth(this.player);
       }
-      this.updateChunkDebugOverlay();
     }
     this.collectNearbyGroundItems();
     if (this.buildingSystem.isActive()) {
