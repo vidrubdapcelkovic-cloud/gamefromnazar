@@ -400,7 +400,7 @@ class InputController {
     this.buildToggleButton = this.scene.add.circle(0, 0, 28, 0x806039, 0.9)
       .setStrokeStyle(2, 0xf1d2a5, 0.85).setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 12).setInteractive();
-    this.buildToggleLabel = this.scene.add.text(0, 0, 'BUILD', {
+    this.buildToggleLabel = this.scene.add.text(0, 0, 'СТРОИТЬ', {
       fontFamily: 'Arial, sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 13);
     this.placeButton = this.scene.add.circle(0, 0, 30, 0x3f8f5b, 0.9)

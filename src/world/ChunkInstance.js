@@ -106,7 +106,11 @@ class ChunkInstance {
         objectData.localTileX,
         objectData.localTileY
       );
-      const textureKey = objectData.type === 'TREE' ? 'temporary-tree' : 'temporary-rock';
+      const textureKey = {
+        TREE: 'temporary-tree',
+        ROCK: 'temporary-rock',
+        BERRY_BUSH: 'temporary-berry-bush'
+      }[objectData.type] || 'temporary-rock';
       let gameObject;
       let blockerObject = null;
       let interactionX = position.x;
@@ -118,6 +122,10 @@ class ChunkInstance {
         gameObject.body.setOffset(4, 14);
         gameObject.refreshBody();
         blockerObject = gameObject;
+      } else if (objectData.type === 'BERRY_BUSH') {
+        // Berry bush is a harvestable, non-blocking resource: a plain image with
+        // no collision blocker, interacted with at its centre.
+        gameObject = this.scene.add.image(position.x, position.y, textureKey);
       } else {
         gameObject = this.scene.add.image(position.x, position.y, textureKey);
         const treeBounds = gameObject.getBounds();

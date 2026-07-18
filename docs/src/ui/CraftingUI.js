@@ -100,7 +100,7 @@ class CraftingUI {
     this.toggleButton = this.scene.add.circle(0, 0, 28, 0x674d82, 0.9)
       .setScrollFactor(0).setDepth(INTERFACE_DEPTH + 32)
       .setStrokeStyle(2, 0xe0c9f5, 0.85).setInteractive();
-    this.toggleButtonText = this.scene.add.text(0, 0, 'CRAFT', {
+    this.toggleButtonText = this.scene.add.text(0, 0, 'КРАФТ', {
       fontFamily: 'Arial, sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 33);
     this.toggleButton.setPosition(this.scene.scale.gameSize.width - 52, 122);

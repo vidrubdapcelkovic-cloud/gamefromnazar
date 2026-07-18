@@ -145,7 +145,6 @@ class GameScene extends Phaser.Scene {
     this.createCreatureSystem();
     this.createCamera();
     this.createDayNightInterface();
-    this.createInterface();
     this.createInteractionInterface();
     this.createInventoryUI();
     this.createCraftingUI();
@@ -1509,7 +1508,6 @@ class GameScene extends Phaser.Scene {
         throw new Error(`Не удалось выполнить доступный рецепт костра: ${craftResult.reason}.`);
       }
       this.inventoryUI.updateFromModel();
-      this.updateInventoryHud();
       this.showInteractionMessage(
         `Приготовлено: ${ItemCatalog[craftResult.resultItemType].displayName} ×${craftResult.resultQuantity}`
       );
@@ -1732,17 +1730,6 @@ class GameScene extends Phaser.Scene {
     this.dayNightSystem = null;
   }
 
-  createInterface() {
-    this.inventoryHudText = this.add.text(34, 34, '', {
-      fontFamily: 'Arial, sans-serif',
-      fontSize: '16px',
-      color: '#fff4b0',
-      backgroundColor: '#111820d9',
-      padding: { x: 10, y: 6 }
-    }).setScrollFactor(0).setDepth(INTERFACE_DEPTH);
-    this.updateInventoryHud();
-  }
-
   createInventoryUI() {
     this.inventoryUI = new InventoryUI(
       this,
@@ -1775,7 +1762,6 @@ class GameScene extends Phaser.Scene {
       (isOpen) => this.handleChestOpenChanged(isOpen),
       () => {
         this.inventoryUI.updateFromModel();
-        this.updateInventoryHud();
       }
     );
   }
@@ -1826,7 +1812,6 @@ class GameScene extends Phaser.Scene {
   handleCraftResult(result, recipe) {
     if (result.success) {
       this.inventoryUI.updateFromModel();
-      this.updateInventoryHud();
       this.showInteractionMessage(`Создано: ${recipe.displayName}`);
     } else if (result.reason === 'missingIngredients') {
       this.showInteractionMessage('Недостаточно ресурсов');
@@ -2017,7 +2002,7 @@ class GameScene extends Phaser.Scene {
     this.isDeathHandled = this.playerStatsModel.isDead();
     this.lastPlayerAttackTime = -Infinity;
     this.updateDeathPresentation();
-    this.inventoryUI.updateFromModel(); this.updateInventoryHud();
+    this.inventoryUI.updateFromModel();
     this.statusHUD.update(this.playerStatsModel.getHealth(), this.playerStatsModel.getHunger());
   }
 
@@ -2647,7 +2632,6 @@ class GameScene extends Phaser.Scene {
     }
     this.refreshInteractionTargets();
     this.inventoryUI.updateFromModel();
-    this.updateInventoryHud();
     this.showInteractionMessage(`Построено: ${definition.displayName}`);
     this.updateBuildingPreview();
     return true;
@@ -2694,7 +2678,6 @@ class GameScene extends Phaser.Scene {
       return false;
     }
     this.inventoryUI.updateFromModel();
-    this.updateInventoryHud();
     this.statusHUD.update(this.playerStatsModel.getHealth(), this.playerStatsModel.getHunger());
     const displayedHungerRestored = Math.round(result.hungerRestored * 100) / 100;
     const displayedHealthRestored = Math.round(result.healthRestored * 100) / 100;
@@ -2818,15 +2801,6 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  updateInventoryHud() {
-    if (!this.inventoryHudText || !this.inventoryHudText.active || !this.inventoryModel) return;
-    this.inventoryHudText.setText(
-      `WOOD: ${this.inventoryModel.getTotal('WOOD')}  `
-      + `STONE: ${this.inventoryModel.getTotal('STONE')}  `
-      + `BERRIES: ${this.inventoryModel.getTotal('BERRIES')}`
-    );
-  }
-
   collectNearbyGroundItems() {
     const radiusSquared = GROUND_ITEM_PICKUP_RADIUS * GROUND_ITEM_PICKUP_RADIUS;
     const nearbyItems = this.groundItemSystem.getItems().filter((item) => {
@@ -2847,7 +2821,6 @@ class GameScene extends Phaser.Scene {
       } else {
         this.groundItemSystem.updateQuantity(item.id, remainder);
       }
-      this.updateInventoryHud();
       this.inventoryUI.updateFromModel();
       this.showInteractionMessage(`Подобрано: ${item.itemType} ×${pickedUp}`);
     });

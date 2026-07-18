@@ -261,6 +261,33 @@ class ChunkGenerator {
       }
     }
 
+    // BERRY_BUSH is a harvestable, non-blocking resource. It uses its own
+    // deterministic stream and is placed AFTER every other object/NPC, so the
+    // existing TREE/ROCK/NPC streams and positions stay byte-for-byte identical.
+    // tryPlace reuses the shared occupied/clear-zone/water checks, so bushes
+    // never overlap TREE/ROCK/NPC, never appear in the start clear zone and
+    // never appear on water (only real water candidates are omitted; dry land
+    // and passable banks remain valid). Harvest yields BERRIES ×2 (see
+    // GameScene WORLD_OBJECT_DROPS) and the stable id is
+    // chunk_X_Y_BERRY_BUSH_localX_localY.
+    const BERRY_BUSH_SPAWN_CHANCE = 0.55;
+    const BERRY_BUSH_MAX_PER_CHUNK = 3;
+    const berryRng = SeededRandom.fromParts(worldSeed, chunkX, chunkY, 'chunk-berry-bushes');
+    if (berryRng.next() < BERRY_BUSH_SPAWN_CHANCE) {
+      const berryTarget = berryRng.nextInt(1, BERRY_BUSH_MAX_PER_CHUNK + 1);
+      let berryPlaced = 0;
+      let berryAttempts = 0;
+      const berryMaxAttempts = berryTarget * 24;
+      while (berryPlaced < berryTarget && berryAttempts < berryMaxAttempts) {
+        berryAttempts += 1;
+        const localX = berryRng.nextInt(0, chunkSize);
+        const localY = berryRng.nextInt(0, chunkSize);
+        if (tryPlace('BERRY_BUSH', localX, localY, berryPlaced)) {
+          berryPlaced += 1;
+        }
+      }
+    }
+
     return {
       chunkX,
       chunkY,
