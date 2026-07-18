@@ -20,6 +20,7 @@ const requiredRelativePaths = [
   'src/generated/TallMonsterTextureData.js',
   'src/generated/ElectricmanTextureData.js',
   'src/generated/BowmanTextureData.js',
+  'src/generated/NazarTextureData.js',
   'src/world/WorldGrid.js',
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
@@ -125,6 +126,12 @@ const bowmanTextureModuleSize = generateEmbeddedTextureModule(
   'BOWMAN_TEXTURE_DATA_URL',
   'BOWMAN'
 );
+const nazarTextureModuleSize = generateEmbeddedTextureModule(
+  'assets/generated/nazar.png',
+  'src/generated/NazarTextureData.js',
+  'NAZAR_TEXTURE_DATA_URL',
+  'NAZAR'
+);
 
 requiredRelativePaths.forEach(requireFile);
 
@@ -145,6 +152,7 @@ const buffaloTextureData = fs.readFileSync(requireFile('src/generated/BuffaloTex
 const tallMonsterTextureData = fs.readFileSync(requireFile('src/generated/TallMonsterTextureData.js'), 'utf8');
 const electricmanTextureData = fs.readFileSync(requireFile('src/generated/ElectricmanTextureData.js'), 'utf8');
 const bowmanTextureData = fs.readFileSync(requireFile('src/generated/BowmanTextureData.js'), 'utf8');
+const nazarTextureData = fs.readFileSync(requireFile('src/generated/NazarTextureData.js'), 'utf8');
 const worldGrid = fs.readFileSync(requireFile('src/world/WorldGrid.js'), 'utf8');
 const chunkMath = fs.readFileSync(requireFile('src/world/ChunkMath.js'), 'utf8');
 const seededRandom = fs.readFileSync(requireFile('src/world/SeededRandom.js'), 'utf8');
@@ -218,6 +226,7 @@ ${safeScript(buffaloTextureData)}
 ${safeScript(tallMonsterTextureData)}
 ${safeScript(electricmanTextureData)}
 ${safeScript(bowmanTextureData)}
+${safeScript(nazarTextureData)}
 ${safeScript(worldGrid)}
 ${safeScript(chunkMath)}
 ${safeScript(seededRandom)}
@@ -282,6 +291,7 @@ const pagesHtml = `<!doctype html>
     <script src="./src/generated/TallMonsterTextureData.js"></script>
     <script src="./src/generated/ElectricmanTextureData.js"></script>
     <script src="./src/generated/BowmanTextureData.js"></script>
+    <script src="./src/generated/NazarTextureData.js"></script>
     <script src="./src/world/WorldGrid.js"></script>
     <script src="./src/world/ChunkMath.js"></script>
     <script src="./src/world/SeededRandom.js"></script>
@@ -359,6 +369,7 @@ fs.copyFileSync(requireFile('src/generated/BuffaloTextureData.js'), path.join(do
 fs.copyFileSync(requireFile('src/generated/TallMonsterTextureData.js'), path.join(docsGeneratedDirectory, 'TallMonsterTextureData.js'));
 fs.copyFileSync(requireFile('src/generated/ElectricmanTextureData.js'), path.join(docsGeneratedDirectory, 'ElectricmanTextureData.js'));
 fs.copyFileSync(requireFile('src/generated/BowmanTextureData.js'), path.join(docsGeneratedDirectory, 'BowmanTextureData.js'));
+fs.copyFileSync(requireFile('src/generated/NazarTextureData.js'), path.join(docsGeneratedDirectory, 'NazarTextureData.js'));
 fs.copyFileSync(requireFile('src/world/WorldGrid.js'), path.join(docsWorldDirectory, 'WorldGrid.js'));
 fs.copyFileSync(requireFile('src/world/ChunkMath.js'), path.join(docsWorldDirectory, 'ChunkMath.js'));
 fs.copyFileSync(requireFile('src/world/SeededRandom.js'), path.join(docsWorldDirectory, 'SeededRandom.js'));
@@ -405,6 +416,7 @@ console.log(`BUFFALO texture (встроен): src/generated/BuffaloTextureData.
 console.log(`TALL_MONSTER texture (встроен): src/generated/TallMonsterTextureData.js (${tallMonsterTextureModuleSize} байт)`);
 console.log(`ELECTRICMAN texture (встроен): src/generated/ElectricmanTextureData.js (${electricmanTextureModuleSize} байт)`);
 console.log(`BOWMAN texture (встроен): src/generated/BowmanTextureData.js (${bowmanTextureModuleSize} байт)`);
+console.log(`NAZAR texture (встроен): src/generated/NazarTextureData.js (${nazarTextureModuleSize} байт)`);
 console.log(`Автономная версия: ${autonomousPath} (${autonomousSize} байт)`);
 console.log(`GitHub Pages: ${pagesIndexPath} (${pagesIndexSize} байт)`);
 console.log(`Phaser: ${path.join(docsLibDirectory, 'phaser.min.js')} (${fs.statSync(path.join(docsLibDirectory, 'phaser.min.js')).size} байт)`);

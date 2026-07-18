@@ -12,6 +12,23 @@ const DAY_NIGHT_OVERLAY_DEPTH = INTERFACE_DEPTH - 100;
 const GROUND_ITEM_PICKUP_RADIUS = 28;
 const BUILDING_DISMANTLE_DURATION_MS = 600;
 const PLAYER_MELEE_ATTACK = Object.freeze({ damage: 10, radius: 52, cooldownMs: 450 });
+// Nazar player sprite geometry. The build-time embedded nazar-texture is
+// 671x1039 px (content 639x1007 + 16 px transparent padding). A single uniform
+// scale keeps proportions exact and lets the Arcade body scale with the sprite.
+// The initial pass rendered at ~0.0991 scale (display 67x103, visible height
+// ~100 px); that scale is reduced by exactly 1.5x here so the hero is 1.5x
+// smaller (display ~44x69, visible height ~66.5 px). Body sizes/offsets are in
+// texture source pixels covering the central torso, pelvis and upper legs (no
+// head/arms/padding) and are NOT divided again by 1.5 — the sprite scale shrinks
+// the world footprint automatically (~30x42 px -> ~20x28 px). Only the player
+// visual/body change here — movement, stats and combat are untouched.
+const PLAYER_NAZAR_TEXTURE_KEY = 'nazar-texture';
+const PLAYER_NAZAR_PREVIOUS_SCALE = 103 / 1039;
+const PLAYER_NAZAR_SCALE = PLAYER_NAZAR_PREVIOUS_SCALE / 1.5;
+const PLAYER_NAZAR_BODY_WIDTH = 300;
+const PLAYER_NAZAR_BODY_HEIGHT = 424;
+const PLAYER_NAZAR_BODY_OFFSET_X = 185;
+const PLAYER_NAZAR_BODY_OFFSET_Y = 416;
 const ITEM_TEXTURE_KEYS = Object.freeze({
   WOOD: 'temporary-ground-wood',
   STONE: 'temporary-ground-stone',
@@ -92,6 +109,16 @@ class GameScene extends Phaser.Scene {
       && !this.textures.exists('bowman-texture')
     ) {
       this.load.image('bowman-texture', BOWMAN_TEXTURE_DATA_URL);
+    }
+    // Main player sprite (Nazar) is embedded as a build-time data URL, mirroring
+    // the NPC textures above. No external PNG is referenced.
+    if (
+      typeof NAZAR_TEXTURE_DATA_URL === 'string'
+      && NAZAR_TEXTURE_DATA_URL.length > 0
+      && this.textures
+      && !this.textures.exists(PLAYER_NAZAR_TEXTURE_KEY)
+    ) {
+      this.load.image(PLAYER_NAZAR_TEXTURE_KEY, NAZAR_TEXTURE_DATA_URL);
     }
   }
 
@@ -588,7 +615,10 @@ class GameScene extends Phaser.Scene {
   }
 
   createPlayer() {
-    if (!this.textures.exists('player')) {
+    // Prefer the embedded Nazar texture; keep the procedural placeholder as a
+    // fallback so the scene still runs if the data URL is unavailable.
+    const useNazarTexture = this.textures && this.textures.exists(PLAYER_NAZAR_TEXTURE_KEY);
+    if (!useNazarTexture && !this.textures.exists('player')) {
       const playerTexture = this.make.graphics({ x: 0, y: 0, add: false });
       playerTexture.fillStyle(0x163a59, 1);
       playerTexture.fillRoundedRect(0, 0, 40, 40, 8);
@@ -627,9 +657,23 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    this.player = this.physics.add.sprite(startPosition.x, startPosition.y, 'player');
+    this.player = this.physics.add.sprite(
+      startPosition.x,
+      startPosition.y,
+      useNazarTexture ? PLAYER_NAZAR_TEXTURE_KEY : 'player'
+    );
     this.player.setCollideWorldBounds(!this.useChunkedWorld);
-    this.player.body.setSize(40, 40);
+    if (useNazarTexture) {
+      // Uniform scale via display size (keeps proportions), then a body in
+      // texture-source pixels covering torso/pelvis/upper legs. flipX does not
+      // move an Arcade body offset, so gameplay origins stay stable.
+      this.player.setOrigin(0.5, 0.5);
+      this.player.setScale(PLAYER_NAZAR_SCALE);
+      this.player.body.setSize(PLAYER_NAZAR_BODY_WIDTH, PLAYER_NAZAR_BODY_HEIGHT);
+      this.player.body.setOffset(PLAYER_NAZAR_BODY_OFFSET_X, PLAYER_NAZAR_BODY_OFFSET_Y);
+    } else {
+      this.player.body.setSize(40, 40);
+    }
     this.playerMapCollider = this.physics.add.collider(this.player, this.surfaceLayer);
     this.updateWorldDepth(this.player);
   }
