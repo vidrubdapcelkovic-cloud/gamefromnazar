@@ -274,12 +274,14 @@ function createBlockingGroupMock() {
 
 const bundle = [
   'src/data/PassiveNpcConfig.js',
+  'src/data/HostileNpcConfig.js',
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
   'src/world/ChunkGenerator.js',
   'src/world/ChunkResourceIds.js',
   'src/world/ChunkNpcIds.js',
   'src/world/ChunkNpcWander.js',
+  'src/world/HostileNpcController.js',
   'src/world/ChunkInstance.js'
 ].map((relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')).join('\n;\n');
 

@@ -19,8 +19,25 @@ class SaveSystem {
     return unique;
   }
 
+  // Accept both passive chunk_*_NPC_* and hostile chunk_*_ENEMY_* stable IDs.
+  // Reject resources (TREE/ROCK) and other non-NPC identifiers.
+  static isValidRemovedNpcId(id) {
+    if (typeof id !== 'string' || id.length === 0) return false;
+    if (!id.startsWith('chunk_')) return false;
+    return id.indexOf('_NPC_') !== -1 || id.indexOf('_ENEMY_') !== -1;
+  }
+
   static normalizeRemovedNpcIds(value) {
-    return SaveSystem.normalizeRemovedResources(value);
+    if (!Array.isArray(value)) return [];
+    const unique = [];
+    const seen = new Set();
+    value.forEach((entry) => {
+      if (!SaveSystem.isValidRemovedNpcId(entry) || seen.has(entry)) return;
+      seen.add(entry);
+      unique.push(entry);
+    });
+    unique.sort();
+    return unique;
   }
 
   static normalizeState(state) {

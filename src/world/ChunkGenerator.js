@@ -150,6 +150,31 @@ class ChunkGenerator {
       }
     }
 
+    // TALL_MONSTER uses a separate enemy stream so passive NPC placement stays unchanged.
+    const tallMonsterRng = SeededRandom.fromParts(
+      worldSeed,
+      chunkX,
+      chunkY,
+      'chunk-enemies-tall-monster'
+    );
+    if (tallMonsterRng.next() < 0.10) {
+      let placedTallMonster = false;
+      for (let attempt = 0; attempt < 48 && !placedTallMonster; attempt += 1) {
+        const localX = tallMonsterRng.nextInt(0, chunkSize);
+        const localY = tallMonsterRng.nextInt(0, chunkSize);
+        const key = `${localX},${localY}`;
+        if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
+        occupied.add(key);
+        npcs.push({
+          type: 'TALL_MONSTER',
+          index: 0,
+          localTileX: localX,
+          localTileY: localY
+        });
+        placedTallMonster = true;
+      }
+    }
+
     return {
       chunkX,
       chunkY,

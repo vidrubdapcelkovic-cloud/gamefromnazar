@@ -13,9 +13,11 @@ const requiredRelativePaths = [
   'src/data/CreatureCatalog.js',
   'src/data/CombatConfig.js',
   'src/data/PassiveNpcConfig.js',
+  'src/data/HostileNpcConfig.js',
   'src/generated/PigTextureData.js',
   'src/generated/LlamaTextureData.js',
   'src/generated/BuffaloTextureData.js',
+  'src/generated/TallMonsterTextureData.js',
   'src/world/WorldGrid.js',
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
@@ -23,6 +25,7 @@ const requiredRelativePaths = [
   'src/world/ChunkResourceIds.js',
   'src/world/ChunkNpcIds.js',
   'src/world/ChunkNpcWander.js',
+  'src/world/HostileNpcController.js',
   'src/world/ChunkInstance.js',
   'src/world/ChunkManager.js',
   'src/systems/InteractionSystem.js',
@@ -102,6 +105,12 @@ const buffaloTextureModuleSize = generateEmbeddedTextureModule(
   'BUFFALO_TEXTURE_DATA_URL',
   'BUFFALO'
 );
+const tallMonsterTextureModuleSize = generateEmbeddedTextureModule(
+  'assets/generated/tall-monster.png',
+  'src/generated/TallMonsterTextureData.js',
+  'TALL_MONSTER_TEXTURE_DATA_URL',
+  'TALL_MONSTER'
+);
 
 requiredRelativePaths.forEach(requireFile);
 
@@ -115,9 +124,11 @@ const buildCatalog = fs.readFileSync(requireFile('src/data/BuildCatalog.js'), 'u
 const creatureCatalog = fs.readFileSync(requireFile('src/data/CreatureCatalog.js'), 'utf8');
 const combatConfig = fs.readFileSync(requireFile('src/data/CombatConfig.js'), 'utf8');
 const passiveNpcConfig = fs.readFileSync(requireFile('src/data/PassiveNpcConfig.js'), 'utf8');
+const hostileNpcConfig = fs.readFileSync(requireFile('src/data/HostileNpcConfig.js'), 'utf8');
 const pigTextureData = fs.readFileSync(requireFile('src/generated/PigTextureData.js'), 'utf8');
 const llamaTextureData = fs.readFileSync(requireFile('src/generated/LlamaTextureData.js'), 'utf8');
 const buffaloTextureData = fs.readFileSync(requireFile('src/generated/BuffaloTextureData.js'), 'utf8');
+const tallMonsterTextureData = fs.readFileSync(requireFile('src/generated/TallMonsterTextureData.js'), 'utf8');
 const worldGrid = fs.readFileSync(requireFile('src/world/WorldGrid.js'), 'utf8');
 const chunkMath = fs.readFileSync(requireFile('src/world/ChunkMath.js'), 'utf8');
 const seededRandom = fs.readFileSync(requireFile('src/world/SeededRandom.js'), 'utf8');
@@ -125,6 +136,7 @@ const chunkGenerator = fs.readFileSync(requireFile('src/world/ChunkGenerator.js'
 const chunkResourceIds = fs.readFileSync(requireFile('src/world/ChunkResourceIds.js'), 'utf8');
 const chunkNpcIds = fs.readFileSync(requireFile('src/world/ChunkNpcIds.js'), 'utf8');
 const chunkNpcWander = fs.readFileSync(requireFile('src/world/ChunkNpcWander.js'), 'utf8');
+const hostileNpcController = fs.readFileSync(requireFile('src/world/HostileNpcController.js'), 'utf8');
 const chunkInstance = fs.readFileSync(requireFile('src/world/ChunkInstance.js'), 'utf8');
 const chunkManager = fs.readFileSync(requireFile('src/world/ChunkManager.js'), 'utf8');
 const interactionSystem = fs.readFileSync(requireFile('src/systems/InteractionSystem.js'), 'utf8');
@@ -183,9 +195,11 @@ ${safeScript(buildCatalog)}
 ${safeScript(creatureCatalog)}
 ${safeScript(combatConfig)}
 ${safeScript(passiveNpcConfig)}
+${safeScript(hostileNpcConfig)}
 ${safeScript(pigTextureData)}
 ${safeScript(llamaTextureData)}
 ${safeScript(buffaloTextureData)}
+${safeScript(tallMonsterTextureData)}
 ${safeScript(worldGrid)}
 ${safeScript(chunkMath)}
 ${safeScript(seededRandom)}
@@ -193,6 +207,7 @@ ${safeScript(chunkGenerator)}
 ${safeScript(chunkResourceIds)}
 ${safeScript(chunkNpcIds)}
 ${safeScript(chunkNpcWander)}
+${safeScript(hostileNpcController)}
 ${safeScript(chunkInstance)}
 ${safeScript(chunkManager)}
 ${safeScript(interactionSystem)}
@@ -242,9 +257,11 @@ const pagesHtml = `<!doctype html>
     <script src="./src/data/CreatureCatalog.js"></script>
     <script src="./src/data/CombatConfig.js"></script>
     <script src="./src/data/PassiveNpcConfig.js"></script>
+    <script src="./src/data/HostileNpcConfig.js"></script>
     <script src="./src/generated/PigTextureData.js"></script>
     <script src="./src/generated/LlamaTextureData.js"></script>
     <script src="./src/generated/BuffaloTextureData.js"></script>
+    <script src="./src/generated/TallMonsterTextureData.js"></script>
     <script src="./src/world/WorldGrid.js"></script>
     <script src="./src/world/ChunkMath.js"></script>
     <script src="./src/world/SeededRandom.js"></script>
@@ -252,6 +269,7 @@ const pagesHtml = `<!doctype html>
     <script src="./src/world/ChunkResourceIds.js"></script>
     <script src="./src/world/ChunkNpcIds.js"></script>
     <script src="./src/world/ChunkNpcWander.js"></script>
+    <script src="./src/world/HostileNpcController.js"></script>
     <script src="./src/world/ChunkInstance.js"></script>
     <script src="./src/world/ChunkManager.js"></script>
     <script src="./src/systems/InteractionSystem.js"></script>
@@ -314,9 +332,11 @@ fs.copyFileSync(requireFile('src/data/BuildCatalog.js'), path.join(docsDataDirec
 fs.copyFileSync(requireFile('src/data/CreatureCatalog.js'), path.join(docsDataDirectory, 'CreatureCatalog.js'));
 fs.copyFileSync(requireFile('src/data/CombatConfig.js'), path.join(docsDataDirectory, 'CombatConfig.js'));
 fs.copyFileSync(requireFile('src/data/PassiveNpcConfig.js'), path.join(docsDataDirectory, 'PassiveNpcConfig.js'));
+fs.copyFileSync(requireFile('src/data/HostileNpcConfig.js'), path.join(docsDataDirectory, 'HostileNpcConfig.js'));
 fs.copyFileSync(requireFile('src/generated/PigTextureData.js'), path.join(docsGeneratedDirectory, 'PigTextureData.js'));
 fs.copyFileSync(requireFile('src/generated/LlamaTextureData.js'), path.join(docsGeneratedDirectory, 'LlamaTextureData.js'));
 fs.copyFileSync(requireFile('src/generated/BuffaloTextureData.js'), path.join(docsGeneratedDirectory, 'BuffaloTextureData.js'));
+fs.copyFileSync(requireFile('src/generated/TallMonsterTextureData.js'), path.join(docsGeneratedDirectory, 'TallMonsterTextureData.js'));
 fs.copyFileSync(requireFile('src/world/WorldGrid.js'), path.join(docsWorldDirectory, 'WorldGrid.js'));
 fs.copyFileSync(requireFile('src/world/ChunkMath.js'), path.join(docsWorldDirectory, 'ChunkMath.js'));
 fs.copyFileSync(requireFile('src/world/SeededRandom.js'), path.join(docsWorldDirectory, 'SeededRandom.js'));
@@ -324,6 +344,7 @@ fs.copyFileSync(requireFile('src/world/ChunkGenerator.js'), path.join(docsWorldD
 fs.copyFileSync(requireFile('src/world/ChunkResourceIds.js'), path.join(docsWorldDirectory, 'ChunkResourceIds.js'));
 fs.copyFileSync(requireFile('src/world/ChunkNpcIds.js'), path.join(docsWorldDirectory, 'ChunkNpcIds.js'));
 fs.copyFileSync(requireFile('src/world/ChunkNpcWander.js'), path.join(docsWorldDirectory, 'ChunkNpcWander.js'));
+fs.copyFileSync(requireFile('src/world/HostileNpcController.js'), path.join(docsWorldDirectory, 'HostileNpcController.js'));
 fs.copyFileSync(requireFile('src/world/ChunkInstance.js'), path.join(docsWorldDirectory, 'ChunkInstance.js'));
 fs.copyFileSync(requireFile('src/world/ChunkManager.js'), path.join(docsWorldDirectory, 'ChunkManager.js'));
 fs.copyFileSync(requireFile('src/systems/InteractionSystem.js'), path.join(docsSystemsDirectory, 'InteractionSystem.js'));
@@ -359,6 +380,7 @@ assetDirectories.forEach((directoryPath) => {
 console.log(`PIG texture (встроен): src/generated/PigTextureData.js (${pigTextureModuleSize} байт)`);
 console.log(`LLAMA texture (встроен): src/generated/LlamaTextureData.js (${llamaTextureModuleSize} байт)`);
 console.log(`BUFFALO texture (встроен): src/generated/BuffaloTextureData.js (${buffaloTextureModuleSize} байт)`);
+console.log(`TALL_MONSTER texture (встроен): src/generated/TallMonsterTextureData.js (${tallMonsterTextureModuleSize} байт)`);
 console.log(`Автономная версия: ${autonomousPath} (${autonomousSize} байт)`);
 console.log(`GitHub Pages: ${pagesIndexPath} (${pagesIndexSize} байт)`);
 console.log(`Phaser: ${path.join(docsLibDirectory, 'phaser.min.js')} (${fs.statSync(path.join(docsLibDirectory, 'phaser.min.js')).size} байт)`);

@@ -69,6 +69,14 @@ class GameScene extends Phaser.Scene {
     ) {
       this.load.image('buffalo-texture', BUFFALO_TEXTURE_DATA_URL);
     }
+    if (
+      typeof TALL_MONSTER_TEXTURE_DATA_URL === 'string'
+      && TALL_MONSTER_TEXTURE_DATA_URL.length > 0
+      && this.textures
+      && !this.textures.exists('tall-monster-texture')
+    ) {
+      this.load.image('tall-monster-texture', TALL_MONSTER_TEXTURE_DATA_URL);
+    }
   }
 
   create() {
@@ -278,8 +286,7 @@ class GameScene extends Phaser.Scene {
   }
 
   markSessionNpcRemoved(id) {
-    if (typeof id !== 'string' || id.length === 0) return;
-    if (!id.startsWith('chunk_') || id.indexOf('_NPC_') === -1) return;
+    if (!SaveSystem.isValidRemovedNpcId(id)) return;
     this.sessionRemovedNpcIds.add(id);
   }
 
@@ -2212,6 +2219,23 @@ class GameScene extends Phaser.Scene {
     return true;
   }
 
+  // Shared player damage entry used by hostile NPCs (and available to other systems).
+  // Does not bypass HP ownership: PlayerStatsModel.takeDamage remains the only HP writer.
+  damagePlayer(amount, source) {
+    if (this.isPlayerDead() || !this.playerStatsModel) return 0;
+    if (!Number.isFinite(amount) || amount <= 0) return 0;
+    const damage = this.playerStatsModel.takeDamage(amount);
+    if (damage <= 0) return 0;
+    if (this.statusHUD) {
+      this.statusHUD.update(
+        this.playerStatsModel.getHealth(),
+        this.playerStatsModel.getHunger()
+      );
+    }
+    if (this.playerStatsModel.isDead()) this.handlePlayerDeath();
+    return damage;
+  }
+
   updatePlayerHitFlash() {
     const time = this.getCombatTime();
     if (!this.player || !this.player.active) return;
@@ -2833,6 +2857,17 @@ class GameScene extends Phaser.Scene {
       this.playerStatsModel.getHunger()
     );
     if (this.playerStatsModel.isDead()) this.handlePlayerDeath();
+
+    if (this.chunkManager && this.chunkManager.chunks) {
+      const hostileTime = this.getCombatTime();
+      const hostileDelta = statsDelta;
+      this.chunkManager.chunks.forEach((instance) => {
+        if (instance && typeof instance.updateHostiles === 'function') {
+          instance.updateHostiles(hostileTime, hostileDelta);
+        }
+      });
+      if (this.playerStatsModel.isDead()) this.handlePlayerDeath();
+    }
 
     if (input.consumeSavePressed()) this.saveGame();
     if (input.consumeLoadPressed()) this.loadGame();

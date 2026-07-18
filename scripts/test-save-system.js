@@ -260,6 +260,30 @@ assertEqual(
   'normalizeRemovedNpcIds helper sorts and filters'
 );
 
+const enemyNpcId = 'chunk_3_-1_ENEMY_TALL_MONSTER_0';
+assertEqual(
+  JSON.stringify(SaveSystem.normalizeRemovedNpcIds([
+    enemyNpcId,
+    oneNpcId,
+    'chunk_0_0_TREE_1_1',
+    'tall-monster-texture',
+    enemyNpcId
+  ])),
+  JSON.stringify([enemyNpcId, oneNpcId].sort()),
+  'normalizeRemovedNpcIds keeps ENEMY ids and drops TREE/texture'
+);
+assert(SaveSystem.isValidRemovedNpcId(enemyNpcId), 'isValidRemovedNpcId accepts ENEMY');
+assert(SaveSystem.isValidRemovedNpcId(oneNpcId), 'isValidRemovedNpcId accepts NPC');
+assert(!SaveSystem.isValidRemovedNpcId('chunk_0_0_TREE_1_1'), 'isValidRemovedNpcId rejects TREE');
+
+assertEqual(
+  JSON.stringify(normalizedRemovedNpcs({
+    world: { ...createBaseState().world, removedNpcIds: [enemyNpcId, oneNpcId] }
+  })),
+  JSON.stringify([enemyNpcId, oneNpcId].sort()),
+  'full normalizeState preserves hostile ENEMY id'
+);
+
 const mixed = SaveSystem.normalizeState(createBaseState({
   world: {
     ...createBaseState().world,

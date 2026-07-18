@@ -15,10 +15,26 @@ class ChunkInstance {
     this.ownedObjectIds = [];
     this.npcObjects = [];
     this.npcIds = new Set();
+    this.hostileControllers = [];
     this.npcBlockedCells = new Set();
     this.createGround(chunkData);
     this.createObjects(chunkData);
     this.createNpcs(chunkData);
+  }
+
+  resolveNpcConfig(type) {
+    const passive = getPassiveNpcConfig(type);
+    if (passive) return { kind: 'passive', config: passive };
+    const hostile = getHostileNpcConfig(type);
+    if (hostile) return { kind: 'hostile', config: hostile };
+    return null;
+  }
+
+  buildStableNpcId(type, index) {
+    if (isHostileNpcType(type)) {
+      return buildChunkEnemyId(this.chunkX, this.chunkY, type, index);
+    }
+    return buildChunkNpcId(this.chunkX, this.chunkY, type, index);
   }
 
   createGround(chunkData) {
@@ -289,7 +305,7 @@ class ChunkInstance {
 
     this.npcObjects.forEach((npcObject) => {
       if (!npcObject || npcObject.destroyed || npcObject.getData('dead')) return;
-      if (!getPassiveNpcConfig(npcObject.getData('npcType'))) return;
+      if (!this.resolveNpcConfig(npcObject.getData('npcType'))) return;
 
       const dx = npcObject.x - x;
       const dy = npcObject.y - y;
@@ -320,7 +336,7 @@ class ChunkInstance {
         : 0;
       return { damage: 0, health: leftover, died: false };
     }
-    if (!getPassiveNpcConfig(npcObject.getData('npcType'))) {
+    if (!this.resolveNpcConfig(npcObject.getData('npcType'))) {
       return { damage: 0, health: 0, died: false };
     }
     if (npcObject.destroyed || npcObject.getData('dead')) {
@@ -361,8 +377,10 @@ class ChunkInstance {
 
     const deathX = npcObject.x;
     const deathY = npcObject.y;
-    const config = getPassiveNpcConfig(npcObject.getData('npcType'));
+    const resolved = this.resolveNpcConfig(npcObject.getData('npcType'));
+    const config = resolved ? resolved.config : null;
 
+    this.destroyHostileControllerForNpc(npcObject);
     this.stopNpcWander(npcObject);
     this.clearNpcPlayerCollider(npcObject);
     if (config) {
@@ -445,7 +463,8 @@ class ChunkInstance {
     if (!this.scene || !this.scene.tweens || typeof this.scene.tweens.add !== 'function') return;
 
     this.clearNpcWanderTween(npcObject);
-    const config = getPassiveNpcConfig(npcObject.getData('npcType'));
+    const resolved = this.resolveNpcConfig(npcObject.getData('npcType'));
+    const config = resolved ? resolved.config : null;
     const duration = config && Number.isFinite(config.wanderTweenDuration)
       ? config.wanderTweenDuration
       : 450;
@@ -477,7 +496,8 @@ class ChunkInstance {
     if (!this.scene || !this.scene.time || typeof this.scene.time.delayedCall !== 'function') return;
 
     this.clearNpcWanderTimer(npcObject);
-    const config = getPassiveNpcConfig(npcObject.getData('npcType'));
+    const resolved = this.resolveNpcConfig(npcObject.getData('npcType'));
+    const config = resolved ? resolved.config : null;
     const pauseDuration = config && Number.isFinite(config.wanderPauseDuration)
       ? config.wanderPauseDuration
       : 900;
@@ -495,17 +515,13 @@ class ChunkInstance {
     this.npcBlockedCells = this.buildNpcBlockedCells(chunkData);
     npcs.forEach((descriptor) => {
       if (!descriptor) return;
-      const config = getPassiveNpcConfig(descriptor.type);
-      if (!config) return;
+      const resolved = this.resolveNpcConfig(descriptor.type);
+      if (!resolved) return;
+      const { kind, config } = resolved;
       if (!Number.isInteger(descriptor.index) || descriptor.index < 0) return;
       if (!Number.isInteger(descriptor.localTileX) || !Number.isInteger(descriptor.localTileY)) return;
 
-      const npcId = buildChunkNpcId(
-        this.chunkX,
-        this.chunkY,
-        descriptor.type,
-        descriptor.index
-      );
+      const npcId = this.buildStableNpcId(descriptor.type, descriptor.index);
       if (typeof this.isNpcRemoved === 'function' && this.isNpcRemoved(npcId)) return;
       if (this.npcIds.has(npcId)) return;
 
@@ -530,6 +546,7 @@ class ChunkInstance {
       npcObject.setDataEnabled();
       npcObject.setData('npcId', npcId);
       npcObject.setData('npcType', descriptor.type);
+      npcObject.setData('npcKind', kind);
       npcObject.setData('chunkKey', this.key);
       npcObject.setData('currentLocalTileX', descriptor.localTileX);
       npcObject.setData('currentLocalTileY', descriptor.localTileY);
@@ -544,6 +561,7 @@ class ChunkInstance {
       npcObject._npcWanderTween = null;
       npcObject._npcWanderTimer = null;
       npcObject._npcPlayerCollider = null;
+      npcObject._hostileController = null;
       this.setupNpcPhysicsBody(npcObject, config);
       this.setupNpcPlayerCollider(npcObject);
       if (typeof this.scene.updateWorldDepth === 'function') {
@@ -555,12 +573,96 @@ class ChunkInstance {
       this.npcIds.add(npcId);
       this.npcObjects.push(npcObject);
       this.startNpcWander(npcObject);
+
+      if (kind === 'hostile') {
+        this.attachHostileController(npcObject, config, position);
+      }
     });
   }
 
+  attachHostileController(npcObject, config, homePosition) {
+    if (!npcObject || !config) return;
+    const controller = new HostileNpcController({
+      config,
+      homeX: homePosition.x,
+      homeY: homePosition.y,
+      getPosition: () => {
+        if (!npcObject || npcObject.destroyed || npcObject.getData('dead')) return null;
+        return { x: npcObject.x, y: npcObject.y };
+      },
+      setPosition: (x, y) => {
+        if (!npcObject || npcObject.destroyed || npcObject.getData('dead')) return;
+        npcObject.x = x;
+        npcObject.y = y;
+      },
+      getPlayerPosition: () => {
+        const player = this.scene && this.scene.player;
+        if (!player || player.destroyed || (player.active === false)) return null;
+        if (this.scene.playerStatsModel && this.scene.playerStatsModel.isDead()) return null;
+        return { x: player.x, y: player.y };
+      },
+      stopWander: () => this.stopNpcWander(npcObject),
+      resumeWander: () => this.resumeNpcWander(npcObject),
+      damagePlayer: (amount) => {
+        if (!this.scene || typeof this.scene.damagePlayer !== 'function') return 0;
+        return this.scene.damagePlayer(amount, npcObject.getData('npcId'));
+      },
+      canOccupy: (x, y) => this.canNpcOccupyWorld(x, y),
+      onMoved: () => {
+        this.syncNpcPhysicsBody(npcObject);
+        if (this.scene && typeof this.scene.updateWorldDepth === 'function') {
+          this.scene.updateWorldDepth(npcObject);
+        }
+      }
+    });
+    npcObject._hostileController = controller;
+    this.hostileControllers.push(controller);
+  }
+
+  resumeNpcWander(npcObject) {
+    if (!npcObject || npcObject.destroyed || npcObject.getData('dead')) return;
+    npcObject.setData('wanderStopped', false);
+    npcObject.setData('wanderStarted', false);
+    this.startNpcWander(npcObject);
+  }
+
+  canNpcOccupyWorld(worldX, worldY) {
+    if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return false;
+    const tile = ChunkMath.worldToTile(worldX, worldY);
+    const local = ChunkMath.worldTileToLocal(tile.tileX, tile.tileY);
+    if (local.chunkX !== this.chunkX || local.chunkY !== this.chunkY) {
+      // Leaving the home chunk during chase/return is allowed; obstacle data is local.
+      return true;
+    }
+    const key = `${local.localTileX},${local.localTileY}`;
+    return !this.npcBlockedCells.has(key);
+  }
+
+  updateHostiles(time, delta) {
+    if (this.destroyed) return;
+    this.hostileControllers.forEach((controller) => {
+      if (!controller || controller.isDestroyed()) return;
+      controller.update(time, delta);
+    });
+  }
+
+  destroyHostileControllerForNpc(npcObject) {
+    if (!npcObject || !npcObject._hostileController) return;
+    const controller = npcObject._hostileController;
+    npcObject._hostileController = null;
+    const index = this.hostileControllers.indexOf(controller);
+    if (index >= 0) this.hostileControllers.splice(index, 1);
+    if (typeof controller.destroy === 'function') controller.destroy();
+  }
+
   destroyNpcs() {
+    this.hostileControllers.slice().forEach((controller) => {
+      if (controller && typeof controller.destroy === 'function') controller.destroy();
+    });
+    this.hostileControllers = [];
     this.npcObjects.slice().forEach((npcObject) => {
       if (!npcObject || npcObject.getData('dead')) return;
+      npcObject._hostileController = null;
       this.stopNpcWander(npcObject);
       this.clearNpcPlayerCollider(npcObject);
       if (typeof npcObject.destroy === 'function') {

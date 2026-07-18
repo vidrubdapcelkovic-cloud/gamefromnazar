@@ -51,8 +51,7 @@ function createOwner() {
   return {
     sessionRemovedNpcIds,
     markSessionNpcRemoved(id) {
-      if (typeof id !== 'string' || id.length === 0) return;
-      if (!id.startsWith('chunk_') || id.indexOf('_NPC_') === -1) return;
+      if (!SaveSystem.isValidRemovedNpcId(id)) return;
       sessionRemovedNpcIds.add(id);
     },
     isSessionNpcRemoved(id) {
@@ -107,14 +106,28 @@ assert(owner.isSessionNpcRemoved(npcId), 'isSessionNpcRemoved true for marked id
 assert(!owner.isSessionNpcRemoved(otherId), 'isSessionNpcRemoved false for other id');
 assert(!owner.isSessionNpcRemoved(treeId), 'TREE id not accepted into removedNpcIds');
 
+const enemyId = 'chunk_4_1_ENEMY_TALL_MONSTER_0';
+owner.markSessionNpcRemoved(enemyId);
+assert(owner.isSessionNpcRemoved(enemyId), 'ENEMY hostile id accepted into removedNpcIds');
+assertEqual(
+  JSON.stringify(owner.exportRemovedNpcIds().sort()),
+  JSON.stringify([enemyId, npcId].sort()),
+  'export keeps both passive and hostile ids'
+);
+
 const exported = owner.exportRemovedNpcIds();
 assert(Array.isArray(exported), 'export is plain array');
-assertEqual(JSON.stringify(exported), JSON.stringify([npcId]), 'export contains marked id');
+assertEqual(
+  JSON.stringify(exported.sort()),
+  JSON.stringify([enemyId, npcId].sort()),
+  'export contains marked passive and hostile ids'
+);
 
 const restored = createOwner();
 restored.applySessionRemovedNpcs(exported);
-assert(restored.isSessionNpcRemoved(npcId), 'restore restores id');
-assertEqual(restored.exportRemovedNpcIds().length, 1, 'restore keeps single id');
+assert(restored.isSessionNpcRemoved(npcId), 'restore restores passive id');
+assert(restored.isSessionNpcRemoved(enemyId), 'restore restores hostile id');
+assertEqual(restored.exportRemovedNpcIds().length, 2, 'restore keeps both ids');
 
 restored.applySessionRemovedNpcs([npcId, npcId, '', null, 12, otherId]);
 assertEqual(
