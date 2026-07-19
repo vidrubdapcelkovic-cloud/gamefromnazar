@@ -34,6 +34,16 @@ class ChunkGenerator {
       return RiverGenerator.isWaterTile(worldSeed, worldTile.tileX, worldTile.tileY);
     };
 
+    // Village reserved mask is a pure function of the world seed and absolute
+    // coordinates (see VillageGenerator), computed BEFORE placement like water.
+    // Reserved tiles reject TREE/ROCK/berry/NPC candidates without touching the
+    // existing RNG streams or draw counts (same reject-after-draw pattern used
+    // for water). Villages never overlap the river or the start safe zone.
+    const isReservedCell = (localX, localY) => {
+      const worldTile = ChunkMath.chunkLocalToWorldTile(chunkX, chunkY, localX, localY);
+      return VillageGenerator.isReservedTile(worldSeed, worldTile.tileX, worldTile.tileY);
+    };
+
     const water = [];
     for (let localY = 0; localY < chunkSize; localY += 1) {
       for (let localX = 0; localX < chunkSize; localX += 1) {
@@ -55,10 +65,11 @@ class ChunkGenerator {
       const key = `${localX},${localY}`;
       if (occupied.has(key) || isInStartClearZone(localX, localY)) return false;
       occupied.add(key);
-      // Water consumes the candidate slot but places no object. This keeps the
-      // existing RNG draw sequence identical, so object positions/IDs outside
-      // water are unchanged; objects that would land on water are simply omitted.
-      if (isWaterCell(localX, localY)) return true;
+      // Water and village-reserved tiles consume the candidate slot but place no
+      // object. This keeps the existing RNG draw sequence identical, so object
+      // positions/IDs outside these masks are unchanged; objects that would land
+      // on water or inside a village are simply omitted.
+      if (isWaterCell(localX, localY) || isReservedCell(localX, localY)) return true;
       objects.push({
         type,
         localTileX: localX,
@@ -105,7 +116,7 @@ class ChunkGenerator {
         // Current terrain is always walkable grass; still skip occupied resource cells.
         occupied.add(key);
         placedNpc = true;
-        if (isWaterCell(localX, localY)) break;
+        if (isWaterCell(localX, localY) || isReservedCell(localX, localY)) break;
         npcs.push({
           type: 'RABBIT',
           index: 0,
@@ -128,7 +139,7 @@ class ChunkGenerator {
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
         placedPig = true;
-        if (isWaterCell(localX, localY)) break;
+        if (isWaterCell(localX, localY) || isReservedCell(localX, localY)) break;
         npcs.push({
           type: 'PIG',
           index: 0,
@@ -150,7 +161,7 @@ class ChunkGenerator {
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
         placedLlama = true;
-        if (isWaterCell(localX, localY)) break;
+        if (isWaterCell(localX, localY) || isReservedCell(localX, localY)) break;
         npcs.push({
           type: 'LLAMA',
           index: 0,
@@ -172,7 +183,7 @@ class ChunkGenerator {
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
         placedBuffalo = true;
-        if (isWaterCell(localX, localY)) break;
+        if (isWaterCell(localX, localY) || isReservedCell(localX, localY)) break;
         npcs.push({
           type: 'BUFFALO',
           index: 0,
@@ -198,7 +209,7 @@ class ChunkGenerator {
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
         placedTallMonster = true;
-        if (isWaterCell(localX, localY)) break;
+        if (isWaterCell(localX, localY) || isReservedCell(localX, localY)) break;
         npcs.push({
           type: 'TALL_MONSTER',
           index: 0,
@@ -224,7 +235,7 @@ class ChunkGenerator {
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
         placedElectricman = true;
-        if (isWaterCell(localX, localY)) break;
+        if (isWaterCell(localX, localY) || isReservedCell(localX, localY)) break;
         npcs.push({
           type: 'ELECTRICMAN',
           index: 0,
@@ -251,7 +262,7 @@ class ChunkGenerator {
         if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
         occupied.add(key);
         placedBowman = true;
-        if (isWaterCell(localX, localY)) break;
+        if (isWaterCell(localX, localY) || isReservedCell(localX, localY)) break;
         npcs.push({
           type: 'BOWMAN',
           index: 0,

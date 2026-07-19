@@ -18,6 +18,7 @@ const bundle = [
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
   'src/world/RiverGenerator.js',
+  'src/world/VillageGenerator.js',
   'src/world/ChunkGenerator.js'
 ].map((relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')).join('\n;\n');
 
@@ -36,12 +37,13 @@ context.exports = {};
 vm.createContext(context);
 vm.runInContext(
   `${bundle}\n;exports.ChunkMath = ChunkMath; exports.SeededRandom = SeededRandom;`
-  + ' exports.RiverGenerator = RiverGenerator; exports.ChunkGenerator = ChunkGenerator;',
+  + ' exports.RiverGenerator = RiverGenerator; exports.VillageGenerator = VillageGenerator;'
+  + ' exports.ChunkGenerator = ChunkGenerator;',
   context,
   { filename: 'rivers-bundle.js' }
 );
 
-const { ChunkMath, RiverGenerator, ChunkGenerator } = context.exports;
+const { ChunkMath, RiverGenerator, VillageGenerator, ChunkGenerator } = context.exports;
 const SIZE = ChunkMath.CHUNK_SIZE;
 
 // ---------------------------------------------------------------------------
@@ -286,12 +288,19 @@ function collectWater(seed, minX, maxX, minY, maxY) {
     }
   }
 
+  // Neutralize the village reserved mask in BOTH runs so this proof isolates the
+  // water mask only (village omissions are covered by test-village-generator).
+  const originalIsReserved = VillageGenerator.isReservedTile;
+  VillageGenerator.isReservedTile = () => false;
+
   const onChunks = coords.map(([cx, cy]) => ChunkGenerator.generate(seed, cx, cy));
 
   const originalIsWater = RiverGenerator.isWaterTile;
   RiverGenerator.isWaterTile = () => false;
   const offChunks = coords.map(([cx, cy]) => ChunkGenerator.generate(seed, cx, cy));
   RiverGenerator.isWaterTile = originalIsWater;
+
+  VillageGenerator.isReservedTile = originalIsReserved;
 
   let objectsOmitted = 0;
   let npcsOmitted = 0;

@@ -33,6 +33,7 @@ const bundle = [
   'src/world/ChunkMath.js',
   'src/world/SeededRandom.js',
   'src/world/RiverGenerator.js',
+  'src/world/VillageGenerator.js',
   'src/world/ChunkGenerator.js',
   'src/world/ChunkResourceIds.js',
   'src/world/ChunkNpcIds.js'
