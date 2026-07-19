@@ -50,7 +50,7 @@ class CraftingUI {
         .setScrollFactor(0).setDepth(INTERFACE_DEPTH + 37)
         .setStrokeStyle(2, 0x78909f, 0.8).setInteractive();
       const ingredientsText = recipe.ingredients
-        .map((ingredient) => `${ingredient.itemType} ×${ingredient.quantity}`)
+        .map((ingredient) => `${ItemCatalog[ingredient.itemType].displayName} ×${ingredient.quantity}`)
         .join('  ');
       const text = this.scene.add.text(290, y - 20, `${recipe.displayName}\n${ingredientsText}`, {
         fontFamily: 'Arial, sans-serif', fontSize: '17px', color: '#ffffff', lineSpacing: 5

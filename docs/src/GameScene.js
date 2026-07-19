@@ -1420,7 +1420,7 @@ class GameScene extends Phaser.Scene {
 
     const drop = WORLD_OBJECT_DROPS[runtimeObject.type];
     this.groundItemSystem.spawn(drop.itemType, drop.quantity, position.x, position.y);
-    this.showInteractionMessage(`${drop.itemType} ×${drop.quantity}`);
+    this.showInteractionMessage(`${ItemCatalog[drop.itemType].displayName} ×${drop.quantity}`);
 
     if (this.useChunkedWorld) {
       this.markSessionResourceRemoved(runtimeObject.id);
@@ -1579,7 +1579,7 @@ class GameScene extends Phaser.Scene {
       );
     });
     const refundText = refunds.map(
-      (refund) => `${refund.itemType} ×${refund.quantity}`
+      (refund) => `${ItemCatalog[refund.itemType].displayName} ×${refund.quantity}`
     ).join(', ');
     this.showInteractionMessage(`Разобрано: ${definition.displayName}. Возврат: ${refundText}`);
     return true;
@@ -2822,7 +2822,7 @@ class GameScene extends Phaser.Scene {
         this.groundItemSystem.updateQuantity(item.id, remainder);
       }
       this.inventoryUI.updateFromModel();
-      this.showInteractionMessage(`Подобрано: ${item.itemType} ×${pickedUp}`);
+      this.showInteractionMessage(`Подобрано: ${ItemCatalog[item.itemType].displayName} ×${pickedUp}`);
     });
   }
 

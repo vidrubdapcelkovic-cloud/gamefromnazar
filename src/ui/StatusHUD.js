@@ -42,7 +42,7 @@ class StatusHUD {
     if (roundedHealth === this.lastHealth && roundedHunger === this.lastHunger) return false;
     this.lastHealth = roundedHealth;
     this.lastHunger = roundedHunger;
-    this.healthText.setText(`HP: ${roundedHealth}/100`);
+    this.healthText.setText(`Здоровье: ${roundedHealth}/100`);
     this.hungerText.setText(`Голод: ${roundedHunger}/100`);
     this.healthBarFill.setScale(roundedHealth / 100, 1);
     this.hungerBarFill.setScale(roundedHunger / 100, 1);

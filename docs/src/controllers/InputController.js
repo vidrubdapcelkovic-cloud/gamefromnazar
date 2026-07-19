@@ -163,7 +163,7 @@ class InputController {
       .setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 10)
       .setInteractive();
-    this.useButtonLabel = this.scene.add.text(0, 0, 'USE', {
+    this.useButtonLabel = this.scene.add.text(0, 0, 'ВЗЯТЬ', {
       fontFamily: 'Arial, sans-serif',
       fontSize: '14px',
       fontStyle: 'bold',
@@ -231,7 +231,7 @@ class InputController {
     this.attackButton = this.scene.add.circle(0, 0, 30, 0x8b3f47, 0.9)
       .setStrokeStyle(3, 0xffc4c8, 0.9).setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 12).setInteractive();
-    this.attackButtonLabel = this.scene.add.text(0, 0, 'ATTACK', {
+    this.attackButtonLabel = this.scene.add.text(0, 0, 'АТАКА', {
       fontFamily: 'Arial, sans-serif', fontSize: '9px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 13);
 
@@ -296,8 +296,8 @@ class InputController {
       }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 13)
     });
 
-    this.saveControl = make('SAVE');
-    this.loadControl = make('LOAD');
+    this.saveControl = make('СОХР.');
+    this.loadControl = make('ЗАГР.');
 
     const bind = (name, control) => {
       control.handler = (pointer, localX, localY, event) => {
@@ -407,14 +407,14 @@ class InputController {
       .setStrokeStyle(3, 0xd9ffe3, 0.9).setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 12).setInteractive().setVisible(false);
     this.placeButton.disableInteractive();
-    this.placeButtonLabel = this.scene.add.text(0, 0, 'PLACE', {
-      fontFamily: 'Arial, sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#ffffff'
+    this.placeButtonLabel = this.scene.add.text(0, 0, 'ПОСТАВИТЬ', {
+      fontFamily: 'Arial, sans-serif', fontSize: '9px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 13).setVisible(false);
 
     Object.keys(BuildCatalog).forEach((buildType) => {
       const definition = BuildCatalog[buildType];
       const costText = definition.cost
-        .map((cost) => `${cost.itemType} ×${cost.quantity}`)
+        .map((cost) => `${ItemCatalog[cost.itemType].displayName} ×${cost.quantity}`)
         .join(' + ');
       const button = this.scene.add.rectangle(0, 0, 132, 46, 0x3b4650, 0.94)
         .setStrokeStyle(2, 0xa9bac7, 0.8)
