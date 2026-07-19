@@ -12,6 +12,11 @@ const DAY_NIGHT_OVERLAY_DEPTH = INTERFACE_DEPTH - 100;
 const GROUND_ITEM_PICKUP_RADIUS = 28;
 const BUILDING_DISMANTLE_DURATION_MS = 600;
 const PLAYER_MELEE_ATTACK = Object.freeze({ damage: 10, radius: 52, cooldownMs: 450 });
+// Center-to-center distance at which a player projectile counts as hitting a
+// chunk NPC. The player ProjectileSystem overlaps only the legacy creature group
+// (empty in the chunked world), so ranged hits on chunk NPCs are resolved each
+// frame by proximity and routed through the shared applyNpcDamage flow.
+const PLAYER_PROJECTILE_HIT_RADIUS = 28;
 // Nazar player sprite geometry. The build-time embedded nazar-texture is
 // 671x1039 px (content 639x1007 + 16 px transparent padding). A single uniform
 // scale keeps proportions exact and lets the Arcade body scale with the sprite.
@@ -887,7 +892,7 @@ class GameScene extends Phaser.Scene {
       this.blockingWorldObjects
     );
     this.projectileSystem = new ProjectileSystem(this, {
-      textureKey: 'temporary-arrow',
+      textureKey: 'player-bullet-texture',
       surfaceLayer: this.surfaceLayer,
       blockingGroup: this.blockingWorldObjects,
       creatureGroup: this.creatureSystem.group,
@@ -1097,6 +1102,13 @@ class GameScene extends Phaser.Scene {
         graphics.fillStyle(0x9a6336, 1);
         graphics.fillTriangle(2, 10, 6, 6, 6, 10);
         graphics.fillTriangle(2, 10, 6, 14, 6, 10);
+      }],
+      ['player-bullet-texture', 0x9aa0a8, (graphics) => {
+        graphics.fillRoundedRect(4, 7, 9, 7, 2);
+        graphics.fillStyle(0xcaa14a, 1);
+        graphics.fillRect(3, 7, 3, 7);
+        graphics.fillStyle(0xe8edf2, 1);
+        graphics.fillTriangle(13, 6, 18, 10, 13, 14);
       }]
     ];
 
@@ -2371,6 +2383,30 @@ class GameScene extends Phaser.Scene {
     return nearest;
   }
 
+  handlePlayerProjectileNpcHits() {
+    // The player ProjectileSystem only overlaps the legacy creature group, which
+    // is empty in the chunked world, so chunk-NPC hits are resolved here by
+    // proximity and routed through the SAME shared damage flow the melee attack
+    // uses (applyNpcDamage -> killNpc -> loot/persistence). One projectile hits
+    // one NPC once: it is removed immediately, so it cannot damage again, and a
+    // dead NPC is guarded inside applyNpcDamage.
+    if (!this.projectileSystem) return;
+    if (!this.useChunkedWorld || !this.chunkManager || !this.chunkManager.chunks) return;
+    const projectiles = this.projectileSystem.getProjectiles();
+    if (projectiles.length === 0) return;
+    projectiles.forEach((projectile) => {
+      if (!projectile || !projectile.active || !projectile.sprite || !projectile.sprite.active) return;
+      const hit = this.findNearestAttackableNpc(
+        projectile.sprite.x,
+        projectile.sprite.y,
+        PLAYER_PROJECTILE_HIT_RADIUS
+      );
+      if (!hit) return;
+      hit.instance.applyNpcDamage(hit.npcObject, projectile.damage);
+      this.projectileSystem.remove(projectile);
+    });
+  }
+
   handleProjectileCreatureHit(projectile, creatureSprite) {
     if (!projectile || !creatureSprite || !this.creatureSystem) return false;
     const target = this.creatureSystem.getCreatures().find(
@@ -2840,6 +2876,7 @@ class GameScene extends Phaser.Scene {
     this.dayNightSystem.update(Number.isFinite(delta) ? Math.max(delta, 0) : 0);
     this.applyDayNightVisuals(false);
     if (this.projectileSystem) this.projectileSystem.update();
+    this.handlePlayerProjectileNpcHits();
     const statsDelta = Math.min(Math.max(Number.isFinite(delta) ? delta : 0, 0), 250);
     this.playerStatsModel.update(statsDelta);
     this.statusHUD.update(
