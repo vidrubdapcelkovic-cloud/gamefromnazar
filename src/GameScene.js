@@ -155,93 +155,6 @@ class GameScene extends Phaser.Scene {
     this.createMenuExitInterface();
     this.createInputController();
     this.initializeSelectedSlot();
-    this.initRiverDebug();
-  }
-
-  // --- TEMPORARY river debug locator (removed before the water commit) ---
-  // Everything below only runs when the page URL contains ?debugRiver=1. Without
-  // the flag no HUD is created, no key is registered and no search runs, so
-  // production behaviour is unchanged. Nothing here is serialized.
-  isRiverDebugEnabled() {
-    if (this._riverDebugEnabled !== undefined) return this._riverDebugEnabled;
-    let enabled = false;
-    try {
-      if (typeof window !== 'undefined' && window.location && typeof window.location.search === 'string') {
-        enabled = new URLSearchParams(window.location.search).get('debugRiver') === '1';
-      }
-    } catch (error) {
-      enabled = false;
-    }
-    this._riverDebugEnabled = enabled;
-    return enabled;
-  }
-
-  initRiverDebug() {
-    if (!this.isRiverDebugEnabled()) return;
-    if (typeof RiverDebugLocator === 'undefined') return;
-    this._riverDebugComputed = false;
-    this._riverDebugWaterTile = null;
-    this._riverDebugShoreTile = null;
-    this._riverDebugText = this.add.text(12, 92, '', {
-      fontFamily: 'monospace',
-      fontSize: '14px',
-      color: '#9fe0ff',
-      backgroundColor: 'rgba(0,0,0,0.55)',
-      padding: { x: 8, y: 6 }
-    }).setScrollFactor(0).setDepth(1000000);
-    if (this.input && this.input.keyboard && typeof this.input.keyboard.addKey === 'function') {
-      this._riverDebugKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-    }
-  }
-
-  updateRiverDebug() {
-    if (!this.isRiverDebugEnabled() || !this.player) return;
-    if (!this._riverDebugComputed) {
-      this._riverDebugComputed = true;
-      const water = RiverDebugLocator.findNearestRiver(this.worldSeed, this.player.x, this.player.y);
-      this._riverDebugWaterTile = water;
-      const shore = water ? RiverDebugLocator.findSafeShore(this.worldSeed, water) : null;
-      this._riverDebugShoreTile = shore;
-      const playerTile = ChunkMath.worldToTile(this.player.x, this.player.y);
-      console.log(`[RIVER DEBUG] seed=${this.worldSeed}`);
-      console.log(`[RIVER DEBUG] playerTile=${playerTile.tileX},${playerTile.tileY}`);
-      console.log(`[RIVER DEBUG] nearestWaterTile=${water ? `${water.tileX},${water.tileY}` : 'none'}`);
-      console.log(`[RIVER DEBUG] safeShoreTile=${shore ? `${shore.tileX},${shore.tileY}` : 'none'}`);
-      console.log(`[RIVER DEBUG] distanceTiles=${water ? water.distanceTiles : 'n/a'}`);
-      console.log(`[RIVER DEBUG] distanceChunks=${water ? water.distanceChunks : 'n/a'}`);
-    }
-    if (this._riverDebugText) {
-      if (this._riverDebugWaterTile) {
-        const info = RiverDebugLocator.describeToTile(this.player.x, this.player.y, this._riverDebugWaterTile);
-        const shoreNote = this._riverDebugShoreTile ? 'R — к берегу' : 'R — берег не найден';
-        this._riverDebugText.setText(`Река: ${info.distanceChunks} чанков ${info.direction}\n${shoreNote}`);
-      } else {
-        this._riverDebugText.setText('Река не найдена');
-      }
-    }
-    if (this._riverDebugKey && Phaser.Input.Keyboard.JustDown(this._riverDebugKey)) {
-      this.teleportToRiverShore();
-    }
-  }
-
-  teleportToRiverShore() {
-    const shore = this._riverDebugShoreTile;
-    if (!shore) {
-      console.log('[RIVER DEBUG] телепорт отменён: безопасный берег не найден');
-      return;
-    }
-    // Move only the player transform/body to the dry shore-tile centre. No stats,
-    // hunger, time, inventory, seed or save changes.
-    this.player.setPosition(shore.worldX, shore.worldY);
-    if (this.player.body && typeof this.player.body.reset === 'function') {
-      this.player.body.reset(shore.worldX, shore.worldY);
-    }
-    if (typeof this.player.setVelocity === 'function') this.player.setVelocity(0, 0);
-    if (this.chunkManager && typeof this.chunkManager.syncAround === 'function') {
-      this.chunkManager.syncAround(shore.worldX, shore.worldY);
-    }
-    this.updateWorldDepth(this.player);
-    console.log(`[RIVER DEBUG] teleport -> shore tile ${shore.tileX},${shore.tileY} world ${Math.round(shore.worldX)},${Math.round(shore.worldY)}`);
   }
 
   isPlayerDead() {
@@ -2918,8 +2831,6 @@ class GameScene extends Phaser.Scene {
     if (this.isApplyingSave) return;
 
     const input = this.inputController;
-
-    this.updateRiverDebug();
 
     if (this.exitConfirmOpen && input.consumeCancelBuildPressed()) {
       this.hideExitConfirmation();
