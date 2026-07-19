@@ -231,6 +231,67 @@ assert(sampleVillages.length >= 10, `enough villages sampled (got ${sampleVillag
 }
 
 // ---------------------------------------------------------------------------
+// 3b. Facade direction: houses and the warehouse face the village centre.
+// ---------------------------------------------------------------------------
+function footprintCenter(footprint) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  footprint.forEach((t) => {
+    if (t.tileX < minX) minX = t.tileX;
+    if (t.tileY < minY) minY = t.tileY;
+    if (t.tileX > maxX) maxX = t.tileX;
+    if (t.tileY > maxY) maxY = t.tileY;
+  });
+  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+}
+
+function expectedFacing(dx, dy) {
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'WEST' : 'EAST';
+  if (dy !== 0) return dy > 0 ? 'NORTH' : 'SOUTH';
+  if (dx !== 0) return dx > 0 ? 'WEST' : 'EAST';
+  return 'SOUTH';
+}
+
+{
+  const valid = new Set(['NORTH', 'EAST', 'SOUTH', 'WEST']);
+  let sawNorth = false;
+  let sawSouth = false;
+  sampleVillages.forEach(({ seed, rx, ry, village }) => {
+    const campfire = village.descriptors.find((d) => d.type === 'VILLAGE_CAMPFIRE');
+    assert(campfire, 'village has a campfire centre');
+    const center = footprintCenter(campfire.footprint);
+
+    // Determinism of facing across repeated queries.
+    const again = VillageGenerator.getVillageForRegion(seed, rx, ry);
+    village.descriptors.forEach((d, i) => {
+      assertEqual(d.facing, again.descriptors[i].facing, 'facing deterministic');
+    });
+
+    village.descriptors.forEach((d) => {
+      if (d.type === 'VILLAGE_HOUSE' || d.type === 'VILLAGE_WAREHOUSE') {
+        assert(valid.has(d.facing), `building facing is valid direction (${d.facing})`);
+        const c = footprintCenter(d.footprint);
+        const want = expectedFacing(c.x - center.x, c.y - center.y);
+        assertEqual(d.facing, want, `facing points toward centre for ${d.id}`);
+
+        // Schema regression: the facade side must lie between the building and
+        // the centre on the chosen dominant axis.
+        if (d.facing === 'NORTH') { assert(c.y > center.y, 'NORTH => building south of centre'); sawNorth = true; }
+        if (d.facing === 'SOUTH') { assert(c.y < center.y, 'SOUTH => building north of centre'); sawSouth = true; }
+        if (d.facing === 'EAST') assert(c.x < center.x, 'EAST => building west of centre');
+        if (d.facing === 'WEST') assert(c.x > center.x, 'WEST => building east of centre');
+      } else {
+        assertEqual(d.facing, null, 'campfire/chest have no facade direction');
+      }
+    });
+  });
+  // The compact template always has buildings both north and south of centre.
+  assert(sawNorth && sawSouth, 'facades exercise both vertical directions');
+}
+
+// ---------------------------------------------------------------------------
 // 4. isReservedTile / findVillageAtTile consistency and cross-chunk descriptor
 //    partitioning by owner chunk.
 // ---------------------------------------------------------------------------

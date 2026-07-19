@@ -93,6 +93,19 @@ class ChunkManager {
       const parsed = ChunkMath.parseChunkKey(key);
       if (!parsed) return;
       const data = ChunkGenerator.generate(this.worldSeed, parsed.chunkX, parsed.chunkY);
+      // Attach the deterministic village plan for this chunk (stage 2 runtime):
+      // owner-chunk descriptors get sprites/bodies here; every chunk that
+      // contains part of a footprint blocks those local cells for NPC wandering.
+      data.village = VillageGenerator.getVillageDescriptorsForChunk(
+        this.worldSeed,
+        parsed.chunkX,
+        parsed.chunkY
+      );
+      data.villageBlockedCells = VillageGenerator.getFootprintCellsForChunk(
+        this.worldSeed,
+        parsed.chunkX,
+        parsed.chunkY
+      );
       const instance = new ChunkInstance(this.scene, data, {
         blockingGroup: this.blockingGroup,
         onObjectCreated: this.onObjectCreated,

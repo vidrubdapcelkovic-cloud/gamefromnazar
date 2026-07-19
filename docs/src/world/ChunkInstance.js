@@ -12,6 +12,54 @@ const BOWMAN_OBSTACLE_HALF = Object.freeze({
 // Static procedural river tile. One texture is shared by every water sprite.
 const RIVER_WATER_TEXTURE_KEY = 'river-water-texture';
 
+// Static procedural village textures (created once). Keys are distinct from the
+// player-build 'temporary-campfire'/'temporary-chest' textures on purpose.
+// Houses and the warehouse have one texture variant per facade direction so the
+// door can face the village centre without rotating the footprint/body.
+const VILLAGE_FACINGS = Object.freeze(['NORTH', 'EAST', 'SOUTH', 'WEST']);
+const VILLAGE_HOUSE_TEXTURE_KEYS = Object.freeze({
+  NORTH: 'village-house-north-texture',
+  EAST: 'village-house-east-texture',
+  SOUTH: 'village-house-south-texture',
+  WEST: 'village-house-west-texture'
+});
+const VILLAGE_WAREHOUSE_TEXTURE_KEYS = Object.freeze({
+  NORTH: 'village-warehouse-north-texture',
+  EAST: 'village-warehouse-east-texture',
+  SOUTH: 'village-warehouse-south-texture',
+  WEST: 'village-warehouse-west-texture'
+});
+const VILLAGE_CAMPFIRE_TEXTURE_KEY = 'village-campfire-texture';
+const VILLAGE_CHEST_CLOSED_TEXTURE_KEY = 'village-chest-closed-texture';
+
+// Runtime spec per village descriptor type. Texture pixel size equals the
+// footprint (tilesW/tilesH * TILE_SIZE) so the visual matches stage-1 footprints
+// exactly. Houses/warehouse block their whole footprint; campfire/chest keep a
+// small blocker inside their single cell. None of them deal damage.
+const VILLAGE_RUNTIME_SPEC = Object.freeze({
+  VILLAGE_HOUSE: { tilesW: 4, tilesH: 3, fullFootprintBody: true },
+  VILLAGE_WAREHOUSE: { tilesW: 4, tilesH: 4, fullFootprintBody: true },
+  VILLAGE_CAMPFIRE: {
+    tilesW: 1, tilesH: 1,
+    body: { width: 18, height: 14, offsetX: 7, offsetY: 14 }
+  },
+  VILLAGE_CHEST: {
+    tilesW: 1, tilesH: 1,
+    body: { width: 22, height: 18, offsetX: 5, offsetY: 10 }
+  }
+});
+
+// Resolve the texture key for a descriptor. Houses/warehouse pick the directional
+// facade variant (SOUTH fallback); campfire/chest are direction-agnostic.
+function resolveVillageTextureKey(type, facing) {
+  const dir = VILLAGE_HOUSE_TEXTURE_KEYS[facing] ? facing : 'SOUTH';
+  if (type === 'VILLAGE_HOUSE') return VILLAGE_HOUSE_TEXTURE_KEYS[dir];
+  if (type === 'VILLAGE_WAREHOUSE') return VILLAGE_WAREHOUSE_TEXTURE_KEYS[dir];
+  if (type === 'VILLAGE_CAMPFIRE') return VILLAGE_CAMPFIRE_TEXTURE_KEY;
+  if (type === 'VILLAGE_CHEST') return VILLAGE_CHEST_CLOSED_TEXTURE_KEY;
+  return null;
+}
+
 class ChunkInstance {
   constructor(scene, chunkData, options) {
     this.scene = scene;
@@ -35,10 +83,13 @@ class ChunkInstance {
     this.projectiles = [];
     // Static water sprites/blockers, created and destroyed with the chunk.
     this.waterBlockers = [];
+    // Static village sprites/blockers owned by this chunk (runtime-only).
+    this.villageObjects = [];
     this.obstacleRects = this.buildObstacleRects(chunkData);
     this.createGround(chunkData);
     this.createObjects(chunkData);
     this.createWater(chunkData);
+    this.createVillage(chunkData);
     this.createNpcs(chunkData);
   }
 
@@ -270,6 +321,247 @@ class ChunkInstance {
     this.waterBlockers = [];
   }
 
+  ensureVillageTexture(textureKey, draw) {
+    if (!this.scene || !this.scene.textures) return;
+    if (typeof this.scene.textures.exists === 'function' && this.scene.textures.exists(textureKey)) {
+      return;
+    }
+    if (!this.scene.make || typeof this.scene.make.graphics !== 'function') return;
+    const graphics = this.scene.make.graphics({ x: 0, y: 0, add: false });
+    draw(graphics);
+    graphics.destroy();
+  }
+
+  // Draw a door (and a small threshold) on the given wall of a body rectangle.
+  // The roof/front stay upright for every facing; only the door position moves.
+  drawVillageDoor(g, facing, bodyX, bodyY, bodyW, bodyH, doorColor, thresholdColor) {
+    g.fillStyle(doorColor, 1);
+    if (facing === 'NORTH') {
+      const dw = Math.min(24, bodyW - 8);
+      g.fillRect(bodyX + (bodyW - dw) / 2, bodyY + 2, dw, Math.min(22, bodyH - 4));
+    } else if (facing === 'SOUTH') {
+      const dw = Math.min(24, bodyW - 8);
+      const dh = Math.min(26, bodyH - 4);
+      g.fillRect(bodyX + (bodyW - dw) / 2, bodyY + bodyH - dh, dw, dh);
+    } else if (facing === 'WEST') {
+      const dh = Math.min(24, bodyH - 8);
+      g.fillRect(bodyX + 1, bodyY + (bodyH - dh) / 2, Math.min(18, bodyW - 4), dh);
+    } else { // EAST
+      const dh = Math.min(24, bodyH - 8);
+      const dw = Math.min(18, bodyW - 4);
+      g.fillRect(bodyX + bodyW - 1 - dw, bodyY + (bodyH - dh) / 2, dw, dh);
+    }
+    if (thresholdColor !== undefined) {
+      g.fillStyle(thresholdColor, 1);
+    }
+  }
+
+  drawVillageHouse(g, facing, key) {
+    const tileSize = ChunkMath.TILE_SIZE;
+    const w = 4 * tileSize;
+    const h = 3 * tileSize;
+    const roofH = Math.round(h * 0.42);
+    // Wooden body.
+    g.fillStyle(0x8a5a33, 1);
+    g.fillRect(6, roofH, w - 12, h - roofH);
+    g.fillStyle(0x6f4423, 1);
+    g.fillRect(6, roofH, w - 12, 4);
+    // Pitched roof (always upright, never mirrored vertically).
+    g.fillStyle(0x7a3b2a, 1);
+    g.fillTriangle(0, roofH + 2, w / 2, 4, w, roofH + 2);
+    g.fillStyle(0x5c2c1f, 1);
+    g.fillTriangle(w / 2, 12, w - 10, roofH, 10, roofH);
+    // Door on the facing wall of the body.
+    this.drawVillageDoor(g, facing, 6, roofH, w - 12, h - roofH, 0x3a2415);
+    g.generateTexture(key, w, h);
+  }
+
+  drawVillageWarehouse(g, facing, key) {
+    const tileSize = ChunkMath.TILE_SIZE;
+    const w = 4 * tileSize;
+    const h = 4 * tileSize;
+    const roofH = Math.round(h * 0.28);
+    // Greyer, larger body.
+    g.fillStyle(0x6d6f73, 1);
+    g.fillRect(4, roofH, w - 8, h - roofH);
+    g.fillStyle(0x4f5155, 1);
+    g.fillRect(4, roofH, w - 8, 6);
+    // Low roof band (upright).
+    g.fillStyle(0x565860, 1);
+    g.fillRect(0, roofH - 10, w, 12);
+    // Windows on the upper corners for a distinct warehouse look.
+    g.fillStyle(0x8f9196, 1);
+    g.fillRect(12, roofH + 12, 10, 10);
+    g.fillRect(w - 22, roofH + 12, 10, 10);
+    // Wide door on the facing wall.
+    const bodyX = 4;
+    const bodyY = roofH;
+    const bodyW = w - 8;
+    const bodyH = h - roofH;
+    g.fillStyle(0x3c2f22, 1);
+    if (facing === 'NORTH') {
+      g.fillRect(bodyX + (bodyW - 56) / 2, bodyY + 2, 56, 40);
+    } else if (facing === 'SOUTH') {
+      g.fillRect(bodyX + (bodyW - 56) / 2, bodyY + bodyH - 52, 56, 52);
+    } else if (facing === 'WEST') {
+      g.fillRect(bodyX + 1, bodyY + (bodyH - 56) / 2, 40, 56);
+    } else { // EAST
+      g.fillRect(bodyX + bodyW - 1 - 40, bodyY + (bodyH - 56) / 2, 40, 56);
+    }
+    g.generateTexture(key, w, h);
+  }
+
+  ensureVillageTextures() {
+    const tileSize = ChunkMath.TILE_SIZE;
+
+    // One house and one warehouse texture per facade direction (created once).
+    VILLAGE_FACINGS.forEach((facing) => {
+      const houseKey = VILLAGE_HOUSE_TEXTURE_KEYS[facing];
+      this.ensureVillageTexture(houseKey, (g) => this.drawVillageHouse(g, facing, houseKey));
+      const warehouseKey = VILLAGE_WAREHOUSE_TEXTURE_KEYS[facing];
+      this.ensureVillageTexture(warehouseKey, (g) => this.drawVillageWarehouse(g, facing, warehouseKey));
+    });
+
+    // Campfire: ring of stones with a static flame. No animation/light/timers.
+    this.ensureVillageTexture(VILLAGE_CAMPFIRE_TEXTURE_KEY, (g) => {
+      const s = tileSize;
+      g.fillStyle(0x6b6b6b, 1);
+      g.fillCircle(6, 24, 4);
+      g.fillCircle(16, 27, 4);
+      g.fillCircle(26, 24, 4);
+      g.fillCircle(10, 20, 3);
+      g.fillCircle(22, 20, 3);
+      g.fillStyle(0x8a5a2b, 1);
+      g.fillRect(9, 21, 14, 3);
+      g.fillStyle(0xd8531f, 1);
+      g.fillTriangle(16, 6, 23, 22, 9, 22);
+      g.fillStyle(0xf29a2e, 1);
+      g.fillTriangle(16, 12, 20, 22, 12, 22);
+      g.fillStyle(0xffd85e, 1);
+      g.fillTriangle(16, 17, 18, 22, 14, 22);
+      g.generateTexture(VILLAGE_CAMPFIRE_TEXTURE_KEY, s, s);
+    });
+
+    // Closed chest: wooden box with metal bands and a lock. Distinct from ROCK.
+    this.ensureVillageTexture(VILLAGE_CHEST_CLOSED_TEXTURE_KEY, (g) => {
+      const s = tileSize;
+      g.fillStyle(0x7a4a24, 1);
+      g.fillRect(4, 12, 24, 16);
+      g.fillStyle(0x8f5a2c, 1);
+      g.fillRect(4, 8, 24, 8);
+      g.fillStyle(0x4a2c15, 1);
+      g.fillRect(4, 15, 24, 2);
+      g.fillStyle(0x3a2413, 1);
+      g.fillRect(9, 8, 3, 20);
+      g.fillRect(20, 8, 3, 20);
+      g.fillStyle(0xe0c15a, 1);
+      g.fillRect(14, 15, 4, 6);
+      g.generateTexture(VILLAGE_CHEST_CLOSED_TEXTURE_KEY, s, s);
+    });
+  }
+
+  createVillage(chunkData) {
+    if (this.destroyed) return;
+    const descriptors = Array.isArray(chunkData && chunkData.village) ? chunkData.village : [];
+    if (!descriptors.length) return;
+    this.ensureVillageTextures();
+    const tileSize = ChunkMath.TILE_SIZE;
+
+    descriptors.forEach((descriptor) => {
+      if (!descriptor || !VILLAGE_RUNTIME_SPEC[descriptor.type]) return;
+      const footprint = Array.isArray(descriptor.footprint) ? descriptor.footprint : [];
+      if (!footprint.length) return;
+      const spec = VILLAGE_RUNTIME_SPEC[descriptor.type];
+
+      // World-tile bounding box of the (already oriented) footprint. The visual is
+      // centred over the footprint so it lines up with the reserved stage-1 cells.
+      let minTileX = Infinity;
+      let minTileY = Infinity;
+      let maxTileX = -Infinity;
+      let maxTileY = -Infinity;
+      footprint.forEach((t) => {
+        if (t.tileX < minTileX) minTileX = t.tileX;
+        if (t.tileY < minTileY) minTileY = t.tileY;
+        if (t.tileX > maxTileX) maxTileX = t.tileX;
+        if (t.tileY > maxTileY) maxTileY = t.tileY;
+      });
+      const widthTiles = maxTileX - minTileX + 1;
+      const heightTiles = maxTileY - minTileY + 1;
+      const centerX = minTileX * tileSize + (widthTiles * tileSize) / 2;
+      const centerY = minTileY * tileSize + (heightTiles * tileSize) / 2;
+
+      // Facade direction comes from the descriptor (VillageGenerator decides it).
+      // The runtime only picks the matching directional texture; it never mirrors
+      // or rotates the sprite, so the footprint/body/position stay identical.
+      const facing = descriptor.facing;
+      const textureKey = resolveVillageTextureKey(descriptor.type, facing);
+      if (!textureKey) return;
+
+      let sprite = null;
+      if (this.blockingGroup && typeof this.blockingGroup.create === 'function') {
+        sprite = this.blockingGroup.create(centerX, centerY, textureKey);
+      } else if (this.scene && this.scene.add && typeof this.scene.add.image === 'function') {
+        sprite = this.scene.add.image(centerX, centerY, textureKey);
+      }
+      if (!sprite) return;
+
+      if (sprite.body) {
+        if (spec.fullFootprintBody) {
+          if (typeof sprite.body.setSize === 'function') {
+            sprite.body.setSize(widthTiles * tileSize, heightTiles * tileSize);
+          }
+          if (typeof sprite.body.setOffset === 'function') sprite.body.setOffset(0, 0);
+        } else if (spec.body) {
+          if (typeof sprite.body.setSize === 'function') {
+            sprite.body.setSize(spec.body.width, spec.body.height);
+          }
+          if (typeof sprite.body.setOffset === 'function') {
+            sprite.body.setOffset(spec.body.offsetX, spec.body.offsetY);
+          }
+        }
+        if (typeof sprite.refreshBody === 'function') sprite.refreshBody();
+      }
+
+      if (this.scene && typeof this.scene.updateWorldDepth === 'function') {
+        this.scene.updateWorldDepth(sprite);
+      } else if (typeof sprite.setDepth === 'function') {
+        const displayHeight = Number.isFinite(sprite.displayHeight) ? sprite.displayHeight : 0;
+        sprite.setDepth((centerY + displayHeight / 2) * 0.1);
+      }
+
+      if (typeof sprite.setDataEnabled === 'function') sprite.setDataEnabled();
+      if (typeof sprite.setData === 'function') {
+        sprite.setData('id', descriptor.id);
+        sprite.setData('type', descriptor.type);
+        sprite.setData('villageId', descriptor.villageId);
+        sprite.setData('facing', facing || null);
+        sprite.setData('chunkKey', this.key);
+      }
+
+      this.villageObjects.push({
+        id: descriptor.id,
+        type: descriptor.type,
+        villageId: descriptor.villageId,
+        facing: facing || null,
+        textureKey,
+        sprite,
+        centerX,
+        centerY
+      });
+    });
+  }
+
+  clearVillage() {
+    this.villageObjects.slice().forEach((entry) => {
+      const sprite = entry && entry.sprite;
+      if (sprite && !sprite.destroyed && typeof sprite.destroy === 'function') {
+        sprite.destroy();
+      }
+      if (entry) entry.sprite = null;
+    });
+    this.villageObjects = [];
+  }
+
   ensureRabbitPlaceholderTexture() {
     const textureKey = 'rabbit-placeholder';
     if (!this.scene || !this.scene.textures || this.scene.textures.exists(textureKey)) return;
@@ -303,6 +595,17 @@ class ChunkInstance {
     water.forEach((tile) => {
       if (!tile || !Number.isInteger(tile.localTileX) || !Number.isInteger(tile.localTileY)) return;
       blockedCells.add(`${tile.localTileX},${tile.localTileY}`);
+    });
+    // Village building/campfire/chest footprint cells block NPC wandering too.
+    // These come from ChunkManager for THIS chunk (including footprints whose
+    // sprite is owned by a neighbouring chunk), so buildings are impassable from
+    // every side even across chunk boundaries.
+    const villageCells = Array.isArray(chunkData && chunkData.villageBlockedCells)
+      ? chunkData.villageBlockedCells
+      : [];
+    villageCells.forEach((cell) => {
+      if (!cell || !Number.isInteger(cell.localTileX) || !Number.isInteger(cell.localTileY)) return;
+      blockedCells.add(`${cell.localTileX},${cell.localTileY}`);
     });
     return blockedCells;
   }
@@ -1052,6 +1355,7 @@ class ChunkInstance {
 
     this.clearProjectiles();
     this.clearWater();
+    this.clearVillage();
     this.destroyNpcs();
 
     if (this.ground) {

@@ -26,6 +26,10 @@ const VillageGenerator = {
   REGION_SIZE: 16,
   VILLAGE_CHANCE: 0.25,
 
+  // Facade directions. A building's `facing` is the side its door/front is drawn
+  // on; houses and the warehouse face the village centre (the campfire).
+  DIRECTIONS: Object.freeze({ NORTH: 'NORTH', EAST: 'EAST', SOUTH: 'SOUTH', WEST: 'WEST' }),
+
   // Fixed plot content size (tiles) and reserved margin. Width 16 (14..18) and
   // height 14 (12..16) both sit inside the required ranges. Reserved zone is the
   // content rectangle expanded by MARGIN on every side.
@@ -76,6 +80,34 @@ const VillageGenerator = {
       regionX: Math.floor(worldTileX / span),
       regionY: Math.floor(worldTileY / span)
     };
+  },
+
+  // Door direction that faces the village centre. `dx`/`dy` are the building
+  // centre minus the village centre; the door points the opposite way (toward
+  // centre). The dominant axis wins; ties resolve to the vertical axis, and a
+  // degenerate zero offset falls back to SOUTH. Purely geometric, deterministic.
+  _facingToCenter(dx, dy) {
+    const D = this.DIRECTIONS;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      return dx > 0 ? D.WEST : D.EAST;
+    }
+    if (dy !== 0) return dy > 0 ? D.NORTH : D.SOUTH;
+    if (dx !== 0) return dx > 0 ? D.WEST : D.EAST;
+    return D.SOUTH;
+  },
+
+  _footprintCenter(footprint) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    footprint.forEach((t) => {
+      if (t.tileX < minX) minX = t.tileX;
+      if (t.tileY < minY) minY = t.tileY;
+      if (t.tileX > maxX) maxX = t.tileX;
+      if (t.tileY > maxY) maxY = t.tileY;
+    });
+    return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
   },
 
   // Apply one of four dimension-preserving orientations to a content tile.
@@ -136,9 +168,26 @@ const VillageGenerator = {
         anchor,
         footprint,
         orientation,
+        facing: null,
         id: `${villageId}_${this._typeShort[part.type]}_${part.index}`,
         ownerChunk: { chunkX: ownerChunk.chunkX, chunkY: ownerChunk.chunkY }
       };
+    });
+
+    // Facade direction: houses and the warehouse face the village centre (the
+    // campfire). Computed from the final (already oriented) footprints, so it is
+    // correct for every template orientation and independent of chunk load order.
+    const campfire = descriptors.find((d) => d.type === 'VILLAGE_CAMPFIRE');
+    const center = campfire
+      ? this._footprintCenter(campfire.footprint)
+      : {
+        x: originTileX + (this.CONTENT_WIDTH - 1) / 2,
+        y: originTileY + (this.CONTENT_HEIGHT - 1) / 2
+      };
+    descriptors.forEach((d) => {
+      if (d.type !== 'VILLAGE_HOUSE' && d.type !== 'VILLAGE_WAREHOUSE') return;
+      const c = this._footprintCenter(d.footprint);
+      d.facing = this._facingToCenter(c.x - center.x, c.y - center.y);
     });
 
     return {
@@ -232,6 +281,31 @@ const VillageGenerator = {
     return village.descriptors.filter(
       (d) => d.ownerChunk.chunkX === chunkX && d.ownerChunk.chunkY === chunkY
     );
+  },
+
+  // Local footprint cells (relative to this chunk) for EVERY structure tile of
+  // the region's village that physically lies in this chunk, regardless of which
+  // chunk owns the sprite. Neighbour chunks use this to block NPC wandering onto
+  // a building whose sprite is created by another (owner) chunk. Returns
+  // { localTileX, localTileY, type } entries.
+  getFootprintCellsForChunk(worldSeed, chunkX, chunkY) {
+    const { regionX, regionY } = this.regionOfChunk(chunkX, chunkY);
+    const village = this.getVillageForRegion(worldSeed, regionX, regionY);
+    if (!village) return [];
+    const size = ChunkMath.CHUNK_SIZE;
+    const cells = [];
+    village.descriptors.forEach((d) => {
+      d.footprint.forEach((t) => {
+        const owner = ChunkMath.tileToChunk(t.tileX, t.tileY);
+        if (owner.chunkX !== chunkX || owner.chunkY !== chunkY) return;
+        cells.push({
+          localTileX: t.tileX - chunkX * size,
+          localTileY: t.tileY - chunkY * size,
+          type: d.type
+        });
+      });
+    });
+    return cells;
   }
 };
 
