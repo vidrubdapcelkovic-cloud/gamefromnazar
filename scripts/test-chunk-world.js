@@ -112,7 +112,7 @@ const samples = [
 
 samples.forEach((chunk) => {
   assert(Array.isArray(chunk.npcs), 'chunk always has npcs array');
-  assert(chunk.npcs.length <= 7, 'chunk has at most seven npcs (passive + hostiles)');
+  assert(chunk.npcs.length <= 8, 'chunk has at most eight npcs (passive + hostiles)');
   assert(
     chunk.npcs.filter((npc) => npc.type === 'RABBIT').length <= 1,
     'chunk has at most one rabbit'
@@ -141,6 +141,10 @@ samples.forEach((chunk) => {
     chunk.npcs.filter((npc) => npc.type === 'BOWMAN').length <= 1,
     'chunk has at most one bowman'
   );
+  assert(
+    chunk.npcs.filter((npc) => npc.type === 'SLIME').length <= 1,
+    'chunk has at most one slime'
+  );
   const occupied = new Set();
   chunk.objects.forEach((object) => {
     assert(object.localTileX >= 0 && object.localTileX <= 15, 'object localX');
@@ -157,7 +161,8 @@ samples.forEach((chunk) => {
       || npc.type === 'BUFFALO'
       || npc.type === 'TALL_MONSTER'
       || npc.type === 'ELECTRICMAN'
-      || npc.type === 'BOWMAN',
+      || npc.type === 'BOWMAN'
+      || npc.type === 'SLIME',
       'npc type is known peaceful or hostile type'
     );
     assert(Number.isInteger(npc.index) && npc.index >= 0, 'npc index');

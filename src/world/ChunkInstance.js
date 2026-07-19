@@ -576,6 +576,26 @@ class ChunkInstance {
     graphics.destroy();
   }
 
+  ensureSlimeTexture() {
+    // Same procedural 32x32 blob as GameScene.createWorldObjectTextures. Guarded
+    // by exists() so it is generated exactly once regardless of which side (scene
+    // preload or first chunk) reaches it first, and never per-instance.
+    const textureKey = 'temporary-slime';
+    if (!this.scene || !this.scene.textures || this.scene.textures.exists(textureKey)) return;
+    if (!this.scene.make || typeof this.scene.make.graphics !== 'function') return;
+    const graphics = this.scene.make.graphics({ x: 0, y: 0, add: false });
+    graphics.fillStyle(0x64b85d, 1);
+    graphics.fillRoundedRect(1, 7, 30, 23, 9);
+    graphics.fillStyle(0x91df79, 1);
+    graphics.fillCircle(11, 15, 4);
+    graphics.fillCircle(21, 15, 4);
+    graphics.fillStyle(0x17212b, 1);
+    graphics.fillCircle(11, 15, 2);
+    graphics.fillCircle(21, 15, 2);
+    graphics.generateTexture(textureKey, 32, 32);
+    graphics.destroy();
+  }
+
   buildNpcBlockedCells(chunkData) {
     const blockedCells = new Set();
     const objects = Array.isArray(chunkData && chunkData.objects) ? chunkData.objects : [];
@@ -797,7 +817,7 @@ class ChunkInstance {
     this.stopNpcWander(npcObject);
     this.clearNpcPlayerCollider(npcObject);
     if (config) {
-      this.dropNpcLoot(config.lootType, config.lootQuantity, deathX, deathY);
+      this.dropNpcLoot(config, npcId, deathX, deathY);
     }
 
     const index = this.npcObjects.indexOf(npcObject);
@@ -815,7 +835,37 @@ class ChunkInstance {
     return true;
   }
 
-  dropNpcLoot(lootType, lootQuantity, deathX, deathY) {
+  dropNpcLoot(config, npcId, deathX, deathY) {
+    if (!config) return;
+    // Preferred: an explicit `loot` array (restored slime behaviour) drops one
+    // ground stack per entry, each with a per-NPC deterministic quantity. NPCs
+    // without a `loot` array keep the original single lootType/lootQuantity drop.
+    if (Array.isArray(config.loot) && config.loot.length > 0) {
+      config.loot.forEach((entry, index) => {
+        if (!entry || typeof entry.itemId !== 'string') return;
+        const quantity = this.resolveLootQuantity(entry, npcId, index);
+        this.dropNpcLootStack(entry.itemId, quantity, deathX, deathY);
+      });
+      return;
+    }
+    this.dropNpcLootStack(config.lootType, config.lootQuantity, deathX, deathY);
+  }
+
+  resolveLootQuantity(entry, npcId, index) {
+    const min = Number.isInteger(entry.minQuantity)
+      ? entry.minQuantity
+      : (Number.isInteger(entry.quantity) ? entry.quantity : NaN);
+    const max = Number.isInteger(entry.maxQuantity) ? entry.maxQuantity : min;
+    if (!Number.isInteger(min) || min <= 0) return 0;
+    if (!Number.isInteger(max) || max <= min) return min;
+    // Deterministic per-NPC quantity so a given slime always drops the same
+    // amount (reproducible across reloads and testable) without a shared RNG.
+    const span = max - min + 1;
+    const hash = SeededRandom.hashParts(String(npcId), index, 0, 'npc-loot-quantity');
+    return min + (hash % span);
+  }
+
+  dropNpcLootStack(lootType, lootQuantity, deathX, deathY) {
     if (typeof lootType !== 'string' || lootType.length === 0) return null;
     if (!Number.isInteger(lootQuantity) || lootQuantity <= 0) return null;
     if (!Number.isFinite(deathX) || !Number.isFinite(deathY)) return null;
@@ -942,6 +992,8 @@ class ChunkInstance {
       // loaded once during preload (see GameScene).
       if (config.textureKey === 'rabbit-placeholder') {
         this.ensureRabbitPlaceholderTexture();
+      } else if (config.textureKey === 'temporary-slime') {
+        this.ensureSlimeTexture();
       }
       const position = ChunkMath.localTileCenterWorld(
         this.chunkX,

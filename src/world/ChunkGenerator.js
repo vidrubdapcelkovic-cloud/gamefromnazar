@@ -299,6 +299,34 @@ class ChunkGenerator {
       }
     }
 
+    // SLIME uses its own deterministic enemy stream and is placed LAST — after
+    // TREE/ROCK, every other NPC and the berry bushes — so it never perturbs any
+    // existing RNG stream, draw count or `occupied` set that those consume. This
+    // keeps TREE/ROCK/berry generation and every other NPC layout byte-for-byte
+    // identical; the slime simply yields (skips this chunk) when its candidate
+    // cell is already occupied, in the start clear zone, on water or reserved.
+    // Spawn chance and max-per-chunk have no historical value (the old slime used
+    // fixed map cells), so they mirror the other hostiles: chance 0.10, max 1.
+    const slimeRng = SeededRandom.fromParts(worldSeed, chunkX, chunkY, 'chunk-enemies-slime');
+    if (slimeRng.next() < 0.10) {
+      let placedSlime = false;
+      for (let attempt = 0; attempt < 48 && !placedSlime; attempt += 1) {
+        const localX = slimeRng.nextInt(0, chunkSize);
+        const localY = slimeRng.nextInt(0, chunkSize);
+        const key = `${localX},${localY}`;
+        if (occupied.has(key) || isInStartClearZone(localX, localY)) continue;
+        occupied.add(key);
+        placedSlime = true;
+        if (isWaterCell(localX, localY) || isReservedCell(localX, localY)) break;
+        npcs.push({
+          type: 'SLIME',
+          index: 0,
+          localTileX: localX,
+          localTileY: localY
+        });
+      }
+    }
+
     return {
       chunkX,
       chunkY,

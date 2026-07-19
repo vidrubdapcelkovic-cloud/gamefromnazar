@@ -8,6 +8,46 @@
 // - radii / speeds: world pixels (or world px / second for chaseSpeed).
 // - attackCooldown / wander durations: milliseconds.
 const HostileNpcConfig = Object.freeze({
+  // SLIME: restored from the legacy CreatureCatalog.SLIME + CreatureSystem blob.
+  // It was hostile (contact damage, detection/lose radius, attack cooldown) and
+  // dropped two stacks. Historically it lived only in the old fixed-map spawn
+  // (GameScene SLIME_SPAWN_CELLS, gated by !useChunkedWorld), so once the world
+  // became chunk-based (USE_CHUNKED_WORLD = true) it never spawned again. It is
+  // re-registered here so the shared ChunkGenerator/ChunkInstance/HostileNpc
+  // controller/persistence flow drives it exactly like the other hostiles.
+  SLIME: Object.freeze({
+    type: 'SLIME',
+    // Procedural 32x32 texture generated once (temporary-slime); display == source.
+    textureKey: 'temporary-slime',
+    maxHp: 30,
+    // Historical two-stack loot (SLIME_GEL x1..2 and RAW_MEAT x1). The optional
+    // `loot` array is consumed by ChunkInstance.dropNpcLoot; hostiles without it
+    // keep using the single lootType/lootQuantity fields (unchanged behaviour).
+    loot: Object.freeze([
+      Object.freeze({ itemId: 'SLIME_GEL', minQuantity: 1, maxQuantity: 2 }),
+      Object.freeze({ itemId: 'RAW_MEAT', minQuantity: 1, maxQuantity: 1 })
+    ]),
+    renderWidth: 32,
+    renderHeight: 32,
+    // Body mirrors the legacy CreatureSystem 24x18 blob, centred on the slime
+    // mass (texture pixels; scaled by the sprite scale like every other NPC body).
+    bodyWidth: 24,
+    bodyHeight: 18,
+    bodyOffsetX: 4,
+    bodyOffsetY: 9,
+    // No historical wander cadence (the old slime idled until it detected the
+    // player); minimal slow-blob values from the base NPC shape (assumption).
+    wanderTweenDuration: 650,
+    wanderPauseDuration: 1100,
+    // Restored 1:1 from CreatureCatalog.SLIME.
+    detectionRadius: 160,
+    disengageRadius: 220,
+    attackRange: 26,
+    attackDamage: 5,
+    attackCooldown: 1000,
+    chaseSpeed: 70,
+    returnRadius: 12
+  }),
   TALL_MONSTER: Object.freeze({
     type: 'TALL_MONSTER',
     textureKey: 'tall-monster-texture',
