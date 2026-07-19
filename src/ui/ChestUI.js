@@ -22,19 +22,19 @@ class ChestUI {
     this.panelBackground = this.scene.add.rectangle(480, 270, 820, 450, 0x0d141b, 0.97)
       .setScrollFactor(0).setDepth(INTERFACE_DEPTH + 60)
       .setStrokeStyle(3, 0xd8b879, 0.9).setInteractive();
-    this.title = this.scene.add.text(480, 62, 'Сундук', {
+    this.title = this.scene.add.text(480, 62, UiText.panels.chest, {
       fontFamily: 'Arial, sans-serif', fontSize: '27px', fontStyle: 'bold', color: '#fff4cf'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 61);
-    this.chestLabel = this.scene.add.text(320, 104, 'Хранилище', {
+    this.chestLabel = this.scene.add.text(320, 104, UiText.panels.chestStorage, {
       fontFamily: 'Arial, sans-serif', fontSize: '18px', color: '#e8c989'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 61);
-    this.playerLabel = this.scene.add.text(640, 104, 'Инвентарь', {
+    this.playerLabel = this.scene.add.text(640, 104, UiText.panels.inventory, {
       fontFamily: 'Arial, sans-serif', fontSize: '18px', color: '#bad5e8'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 61);
     this.closeButton = this.scene.add.rectangle(838, 62, 74, 40, 0x713f3f, 0.95)
       .setStrokeStyle(2, 0xffb8b8, 0.9).setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 62).setInteractive();
-    this.closeLabel = this.scene.add.text(838, 62, 'Закрыть', {
+    this.closeLabel = this.scene.add.text(838, 62, UiText.actions.close, {
       fontFamily: 'Arial, sans-serif', fontSize: '12px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 63);
     this.elements.push(

@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
+const UiText = require('../src/data/UiText.js');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -55,10 +56,12 @@ assert(/new StatusHUD\(/.test(gameScene) || /StatusHUD/.test(gameScene), 'Status
 // ---- Visible CRAFT/BUILD buttons localised ----
 const craftingUI = fs.readFileSync(path.join(root, 'src/ui/CraftingUI.js'), 'utf8');
 const inputController = fs.readFileSync(path.join(root, 'src/controllers/InputController.js'), 'utf8');
-assert(/add\.text\(0, 0, 'КРАФТ'/.test(craftingUI), 'CRAFT button label localised to КРАФТ');
+// Visible labels now come from the single-source UiText module (still Russian).
+assert(/add\.text\(0, 0, UiText\.buttons\.craft\b/.test(craftingUI), 'CRAFT toggle sourced from UiText (КРАФТ)');
 assert(!/add\.text\(0, 0, 'CRAFT'/.test(craftingUI), 'visible CRAFT English label removed');
-assert(/add\.text\(0, 0, 'СТРОИТЬ'/.test(inputController), 'BUILD button label localised to СТРОИТЬ');
+assert(/add\.text\(0, 0, UiText\.buttons\.build\b/.test(inputController), 'BUILD toggle sourced from UiText (СТРОИТЬ)');
 assert(!/add\.text\(0, 0, 'BUILD'/.test(inputController), 'visible BUILD English label removed');
+assert(UiText.buttons.craft === 'КРАФТ' && UiText.buttons.build === 'СТРОИТЬ', 'UiText craft/build labels Russian');
 // Internal handlers/keys keep their English names (unchanged behaviour).
 assert(/onCraftKey/.test(craftingUI), 'internal craft handler name preserved');
 assert(/toggleBuildMode/.test(gameScene), 'internal build toggle handler preserved');

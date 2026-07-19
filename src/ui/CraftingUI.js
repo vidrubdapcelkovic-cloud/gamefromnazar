@@ -29,7 +29,7 @@ class CraftingUI {
     this.panelBackground = this.scene.add.rectangle(480, 270, 460, 480, 0x0d141b, 0.96)
       .setScrollFactor(0).setDepth(INTERFACE_DEPTH + 35)
       .setStrokeStyle(3, 0xbad5e8, 0.75).setInteractive();
-    this.panelTitle = this.scene.add.text(480, 55, 'Крафт', {
+    this.panelTitle = this.scene.add.text(480, 55, UiText.panels.crafting, {
       fontFamily: 'Arial, sans-serif', fontSize: '26px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 36);
     this.elements.push(this.panelBackground, this.panelTitle);
@@ -80,7 +80,7 @@ class CraftingUI {
     this.createButton = this.scene.add.rectangle(480, 450, 180, 48, 0x3f8f5b, 0.95)
       .setScrollFactor(0).setDepth(INTERFACE_DEPTH + 37)
       .setStrokeStyle(2, 0xd9ffe3, 0.9).setInteractive();
-    this.createButtonText = this.scene.add.text(480, 450, 'Создать', {
+    this.createButtonText = this.scene.add.text(480, 450, UiText.buttons.craftConfirm, {
       fontFamily: 'Arial, sans-serif', fontSize: '20px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 38);
     this.onCreatePointerDown = (pointer, localX, localY, event) => {
@@ -100,7 +100,7 @@ class CraftingUI {
     this.toggleButton = this.scene.add.circle(0, 0, 28, 0x674d82, 0.9)
       .setScrollFactor(0).setDepth(INTERFACE_DEPTH + 32)
       .setStrokeStyle(2, 0xe0c9f5, 0.85).setInteractive();
-    this.toggleButtonText = this.scene.add.text(0, 0, 'КРАФТ', {
+    this.toggleButtonText = this.scene.add.text(0, 0, UiText.buttons.craft, {
       fontFamily: 'Arial, sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 33);
     this.toggleButton.setPosition(this.scene.scale.gameSize.width - 52, 122);

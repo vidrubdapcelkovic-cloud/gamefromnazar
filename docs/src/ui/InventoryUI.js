@@ -68,7 +68,7 @@ class InventoryUI {
       .setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 20)
       .setStrokeStyle(3, 0xbad5e8, 0.75);
-    this.panelTitle = this.scene.add.text(480, 162, 'Инвентарь', {
+    this.panelTitle = this.scene.add.text(480, 162, UiText.panels.inventory, {
       fontFamily: 'Arial, sans-serif',
       fontSize: '22px',
       fontStyle: 'bold',

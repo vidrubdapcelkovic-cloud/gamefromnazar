@@ -10,6 +10,7 @@ const requiredRelativePaths = [
   'src/data/ItemCatalog.js',
   'src/data/RecipeCatalog.js',
   'src/data/BuildCatalog.js',
+  'src/data/UiText.js',
   'src/data/CreatureCatalog.js',
   'src/data/CombatConfig.js',
   'src/data/PassiveNpcConfig.js',
@@ -143,6 +144,7 @@ const fixedWorldObjects = fs.readFileSync(requireFile('src/data/FixedWorldObject
 const itemCatalog = fs.readFileSync(requireFile('src/data/ItemCatalog.js'), 'utf8');
 const recipeCatalog = fs.readFileSync(requireFile('src/data/RecipeCatalog.js'), 'utf8');
 const buildCatalog = fs.readFileSync(requireFile('src/data/BuildCatalog.js'), 'utf8');
+const uiText = fs.readFileSync(requireFile('src/data/UiText.js'), 'utf8');
 const creatureCatalog = fs.readFileSync(requireFile('src/data/CreatureCatalog.js'), 'utf8');
 const combatConfig = fs.readFileSync(requireFile('src/data/CombatConfig.js'), 'utf8');
 const passiveNpcConfig = fs.readFileSync(requireFile('src/data/PassiveNpcConfig.js'), 'utf8');
@@ -218,6 +220,7 @@ ${safeScript(fixedWorldObjects)}
 ${safeScript(itemCatalog)}
 ${safeScript(recipeCatalog)}
 ${safeScript(buildCatalog)}
+${safeScript(uiText)}
 ${safeScript(creatureCatalog)}
 ${safeScript(combatConfig)}
 ${safeScript(passiveNpcConfig)}
@@ -284,6 +287,7 @@ const pagesHtml = `<!doctype html>
     <script src="./src/data/ItemCatalog.js"></script>
     <script src="./src/data/RecipeCatalog.js"></script>
     <script src="./src/data/BuildCatalog.js"></script>
+    <script src="./src/data/UiText.js"></script>
     <script src="./src/data/CreatureCatalog.js"></script>
     <script src="./src/data/CombatConfig.js"></script>
     <script src="./src/data/PassiveNpcConfig.js"></script>
@@ -363,6 +367,7 @@ fs.copyFileSync(requireFile('src/data/FixedWorldObjects.js'), path.join(docsData
 fs.copyFileSync(requireFile('src/data/ItemCatalog.js'), path.join(docsDataDirectory, 'ItemCatalog.js'));
 fs.copyFileSync(requireFile('src/data/RecipeCatalog.js'), path.join(docsDataDirectory, 'RecipeCatalog.js'));
 fs.copyFileSync(requireFile('src/data/BuildCatalog.js'), path.join(docsDataDirectory, 'BuildCatalog.js'));
+fs.copyFileSync(requireFile('src/data/UiText.js'), path.join(docsDataDirectory, 'UiText.js'));
 fs.copyFileSync(requireFile('src/data/CreatureCatalog.js'), path.join(docsDataDirectory, 'CreatureCatalog.js'));
 fs.copyFileSync(requireFile('src/data/CombatConfig.js'), path.join(docsDataDirectory, 'CombatConfig.js'));
 fs.copyFileSync(requireFile('src/data/PassiveNpcConfig.js'), path.join(docsDataDirectory, 'PassiveNpcConfig.js'));

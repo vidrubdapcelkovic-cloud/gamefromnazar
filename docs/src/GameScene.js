@@ -2035,12 +2035,12 @@ class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setScrollFactor(0).setDepth(modalDepth + 2).setVisible(false);
     this.exitConfirmButton = this.add.rectangle(390, 325, 160, 46, 0x3d7651, 1)
       .setStrokeStyle(2, 0xcbe9ff, 0.85).setScrollFactor(0).setDepth(modalDepth + 2).setVisible(false);
-    this.exitConfirmText = this.add.text(390, 325, 'СОХРАНИТЬ', {
+    this.exitConfirmText = this.add.text(390, 325, UiText.actions.saveAndExit, {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(modalDepth + 3).setVisible(false);
     this.exitCancelButton = this.add.rectangle(570, 325, 160, 46, 0x5d3e43, 1)
       .setStrokeStyle(2, 0xcbe9ff, 0.85).setScrollFactor(0).setDepth(modalDepth + 2).setVisible(false);
-    this.exitCancelText = this.add.text(570, 325, 'ОТМЕНА', {
+    this.exitCancelText = this.add.text(570, 325, UiText.actions.cancel, {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(modalDepth + 3).setVisible(false);
 

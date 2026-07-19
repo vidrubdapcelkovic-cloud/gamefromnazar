@@ -54,9 +54,9 @@ class MenuScene extends Phaser.Scene {
     const summary = this.add.text(x, 230, '', {
       fontFamily: 'Arial, sans-serif', fontSize: '17px', color: '#bde6ff', align: 'center'
     }).setOrigin(0.5);
-    const continueControl = this.createButton(x, 286, 250, 46, 'ПРОДОЛЖИТЬ', () => this.continueSlot(slotId));
-    const newControl = this.createButton(x, 342, 250, 46, 'НОВАЯ ИГРА', () => this.requestNewGame(slotId));
-    const resetControl = this.createButton(x, 398, 250, 38, 'СБРОСИТЬ СЛОТ', () => this.requestReset(slotId), 0x64383d);
+    const continueControl = this.createButton(x, 286, 250, 46, UiText.menu.continueGame, () => this.continueSlot(slotId));
+    const newControl = this.createButton(x, 342, 250, 46, UiText.menu.newGame, () => this.requestNewGame(slotId));
+    const resetControl = this.createButton(x, 398, 250, 38, UiText.menu.resetSlot, () => this.requestReset(slotId), 0x64383d);
     return { slotId, background, title, status, summary, continueControl, newControl, resetControl, state: null };
   }
 
@@ -156,12 +156,12 @@ class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(depth + 2).setVisible(false);
     this.confirmButton = this.add.rectangle(390, 326, 150, 44, 0x3d7651, 1)
       .setStrokeStyle(2, 0xcbe9ff, 0.85).setDepth(depth + 2).setVisible(false);
-    this.confirmText = this.add.text(390, 326, 'ПОДТВЕРДИТЬ', {
+    this.confirmText = this.add.text(390, 326, UiText.actions.confirm, {
       fontFamily: 'Arial, sans-serif', fontSize: '17px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setDepth(depth + 3).setVisible(false);
     this.cancelButton = this.add.rectangle(570, 326, 150, 44, 0x5d3e43, 1)
       .setStrokeStyle(2, 0xcbe9ff, 0.85).setDepth(depth + 2).setVisible(false);
-    this.cancelText = this.add.text(570, 326, 'ОТМЕНА', {
+    this.cancelText = this.add.text(570, 326, UiText.actions.cancel, {
       fontFamily: 'Arial, sans-serif', fontSize: '16px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setDepth(depth + 3).setVisible(false);
     this.onConfirm = () => { if (this.modalAction) this.modalAction(); };
@@ -173,7 +173,7 @@ class MenuScene extends Phaser.Scene {
   openModal(message, action, confirmLabel) {
     this.modalAction = action;
     this.modalText.setText(message);
-    this.confirmText.setText(confirmLabel || 'ПОДТВЕРДИТЬ');
+    this.confirmText.setText(confirmLabel || UiText.actions.confirm);
     this.modalOverlay.setInteractive();
     this.confirmButton.setInteractive({ useHandCursor: true });
     this.cancelButton.setInteractive({ useHandCursor: true });

@@ -80,7 +80,7 @@ class InputController {
       .setDepth(INTERFACE_DEPTH)
       .setInteractive();
 
-    this.actionButtonLabel = this.scene.add.text(0, 0, 'E', {
+    this.actionButtonLabel = this.scene.add.text(0, 0, UiText.buttons.interactKey, {
       fontFamily: 'Arial, sans-serif',
       fontSize: '30px',
       fontStyle: 'bold',
@@ -163,7 +163,7 @@ class InputController {
       .setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 10)
       .setInteractive();
-    this.useButtonLabel = this.scene.add.text(0, 0, 'ВЗЯТЬ', {
+    this.useButtonLabel = this.scene.add.text(0, 0, UiText.buttons.use, {
       fontFamily: 'Arial, sans-serif',
       fontSize: '14px',
       fontStyle: 'bold',
@@ -231,7 +231,7 @@ class InputController {
     this.attackButton = this.scene.add.circle(0, 0, 30, 0x8b3f47, 0.9)
       .setStrokeStyle(3, 0xffc4c8, 0.9).setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 12).setInteractive();
-    this.attackButtonLabel = this.scene.add.text(0, 0, 'АТАКА', {
+    this.attackButtonLabel = this.scene.add.text(0, 0, UiText.buttons.attack, {
       fontFamily: 'Arial, sans-serif', fontSize: '9px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 13);
 
@@ -296,8 +296,8 @@ class InputController {
       }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 13)
     });
 
-    this.saveControl = make('СОХР.');
-    this.loadControl = make('ЗАГР.');
+    this.saveControl = make(UiText.buttons.save);
+    this.loadControl = make(UiText.buttons.load);
 
     const bind = (name, control) => {
       control.handler = (pointer, localX, localY, event) => {
@@ -353,7 +353,7 @@ class InputController {
       button: this.scene.add.rectangle(0, 0, InputController.MENU_BUTTON_WIDTH, InputController.MENU_BUTTON_HEIGHT, 0x45556a, 0.95)
         .setStrokeStyle(2, 0xcbe9ff, 0.8).setScrollFactor(0)
         .setDepth(INTERFACE_DEPTH + 12).setInteractive({ useHandCursor: true }),
-      text: this.scene.add.text(0, 0, 'МЕНЮ', {
+      text: this.scene.add.text(0, 0, UiText.buttons.menu, {
         fontFamily: 'Arial, sans-serif', fontSize: '13px', fontStyle: 'bold', color: '#ffffff'
       }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 13)
     };
@@ -400,14 +400,14 @@ class InputController {
     this.buildToggleButton = this.scene.add.circle(0, 0, 28, 0x806039, 0.9)
       .setStrokeStyle(2, 0xf1d2a5, 0.85).setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 12).setInteractive();
-    this.buildToggleLabel = this.scene.add.text(0, 0, 'СТРОИТЬ', {
+    this.buildToggleLabel = this.scene.add.text(0, 0, UiText.buttons.build, {
       fontFamily: 'Arial, sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 13);
     this.placeButton = this.scene.add.circle(0, 0, 30, 0x3f8f5b, 0.9)
       .setStrokeStyle(3, 0xd9ffe3, 0.9).setScrollFactor(0)
       .setDepth(INTERFACE_DEPTH + 12).setInteractive().setVisible(false);
     this.placeButton.disableInteractive();
-    this.placeButtonLabel = this.scene.add.text(0, 0, 'ПОСТАВИТЬ', {
+    this.placeButtonLabel = this.scene.add.text(0, 0, UiText.buttons.place, {
       fontFamily: 'Arial, sans-serif', fontSize: '9px', fontStyle: 'bold', color: '#ffffff'
     }).setOrigin(0.5).setScrollFactor(0).setDepth(INTERFACE_DEPTH + 13).setVisible(false);
 
