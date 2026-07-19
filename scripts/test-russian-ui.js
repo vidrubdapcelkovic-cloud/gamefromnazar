@@ -100,7 +100,7 @@ assert(/UiText\.actions\.cancel/.test(menuScene), 'menu Cancel uses UiText');
     const match = new RegExp(`${id}: Object\\.freeze\\(\\{[\\s\\S]*?displayName: '([^']+)'`).exec(itemCatalog);
     assert(match && cyrillic.test(match[1]), `ItemCatalog ${id} has Russian display name`);
   });
-assert(/displayName: 'Лук'/.test(recipeCatalog), 'RecipeCatalog BOW name Russian');
+assert(/displayName: 'Ружьё'/.test(recipeCatalog), 'RecipeCatalog BOW name Russian');
 ['WOOD_WALL', 'CAMPFIRE', 'CHEST'].forEach((id) => {
   const match = new RegExp(`${id}: Object\\.freeze\\(\\{[\\s\\S]*?displayName: '([^']+)'`).exec(buildCatalog);
   assert(match && cyrillic.test(match[1]), `BuildCatalog ${id} has Russian display name`);

@@ -65,6 +65,36 @@ assertEqual(bow.projectileSpeed, 320, 'projectile speed unchanged');
 assertEqual(bow.projectileRange, 220, 'projectile range/lifetime unchanged');
 
 // ---------------------------------------------------------------------------
+// Item presentation: BOW is displayed as a rifle (name + description) while its
+// internal id stays 'BOW'. No new 'RIFLE' id is introduced (save-compatible).
+// ---------------------------------------------------------------------------
+assertEqual(bow.displayName, 'Ружьё', 'player weapon display name is Ружьё');
+assert(typeof bow.description === 'string' && /пул/i.test(bow.description), 'description mentions bullets');
+assert(!/\bRIFLE:\s*Object\.freeze/.test(itemCatalogSource), 'no new RIFLE item id declared');
+assert(!bowContext.exports.ItemCatalog.RIFLE, 'no RIFLE item exists');
+
+// The BOW item keeps its existing icon texture key (inventory/crafting mapping).
+assert(/BOW: 'temporary-bow'/.test(gameScene), 'BOW keeps its temporary-bow texture key');
+const bowIconBlock = /\['temporary-bow',[\s\S]*?\}\],/.exec(gameScene);
+assert(bowIconBlock, 'temporary-bow icon definition present');
+assert(!/arc\(/.test(bowIconBlock[0]), 'icon no longer draws a bow (no arc curve)');
+assert(/fillRect\(/.test(bowIconBlock[0]), 'rifle icon uses stock/barrel rectangles');
+
+// Recipe unchanged: same ingredients, quantities and BOW result.
+const recipeSource = read('src/data/RecipeCatalog.js');
+const recipeContext = { Object, console, exports: {} };
+vm.createContext(recipeContext);
+vm.runInContext(`${recipeSource}\n;exports.RecipeCatalog = RecipeCatalog;`, recipeContext, { filename: 'recipe-catalog.js' });
+const bowRecipe = recipeContext.exports.RecipeCatalog.BOW;
+assertEqual(bowRecipe.result.itemType, 'BOW', 'recipe still yields BOW');
+assertEqual(bowRecipe.result.quantity, 1, 'recipe result quantity unchanged');
+assertEqual(bowRecipe.ingredients.length, 2, 'recipe ingredient count unchanged');
+const bowIngredients = {};
+bowRecipe.ingredients.forEach((entry) => { bowIngredients[entry.itemType] = entry.quantity; });
+assertEqual(bowIngredients.WOOD, 3, 'recipe WOOD quantity unchanged');
+assertEqual(bowIngredients.SLIME_GEL, 1, 'recipe SLIME_GEL quantity unchanged');
+
+// ---------------------------------------------------------------------------
 // No new weapon architecture: no new module / helper / combat directory.
 // ---------------------------------------------------------------------------
 assert(!fs.existsSync(path.join(root, 'src', 'combat')), 'no new combat module directory');

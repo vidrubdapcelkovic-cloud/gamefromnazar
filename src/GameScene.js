@@ -1084,17 +1084,20 @@ class GameScene extends Phaser.Scene {
         graphics.fillRect(8, 3, 5, 9);
         graphics.fillRect(9, 1, 3, 2);
       }],
-      ['temporary-bow', 0x9a6336, (graphics) => {
-        graphics.lineStyle(3, 0x9a6336, 1);
-        graphics.beginPath();
-        graphics.arc(6, 10, 8, -Math.PI / 2, Math.PI / 2);
-        graphics.strokePath();
-        graphics.lineStyle(1, 0xe8dec5, 1);
-        graphics.lineBetween(6, 2, 6, 18);
-        graphics.lineStyle(2, 0xc8d0d6, 1);
-        graphics.lineBetween(4, 10, 17, 10);
-        graphics.fillStyle(0xc8d0d6, 1);
-        graphics.fillTriangle(17, 10, 13, 7, 13, 13);
+      ['temporary-bow', 0x8a5a30, (graphics) => {
+        // Rifle icon (BOW item keeps its id/texture key). Wooden stock at the left,
+        // dark metal barrel pointing right, simple readable silhouette in 20x20.
+        graphics.fillRect(2, 9, 7, 4);
+        graphics.fillTriangle(2, 9, 2, 14, 5, 13);
+        graphics.fillRect(9, 10, 6, 2);
+        graphics.fillStyle(0x3a4046, 1);
+        graphics.fillRect(8, 7, 11, 2);
+        graphics.fillRect(8, 9, 4, 2);
+        graphics.fillStyle(0x2a2e33, 1);
+        graphics.fillRect(9, 12, 1, 2);
+        graphics.fillRect(8, 13, 3, 1);
+        graphics.fillStyle(0x6b7079, 1);
+        graphics.fillRect(18, 7, 1, 2);
       }],
       ['temporary-arrow', 0xc8d0d6, (graphics) => {
         graphics.fillRect(2, 9, 15, 2);

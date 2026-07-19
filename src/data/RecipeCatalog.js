@@ -28,7 +28,7 @@ const RecipeCatalog = Object.freeze({
   }),
   BOW: Object.freeze({
     id: 'BOW',
-    displayName: 'Лук',
+    displayName: 'Ружьё',
     ingredients: Object.freeze([
       Object.freeze({ itemType: 'WOOD', quantity: 3 }),
       Object.freeze({ itemType: 'SLIME_GEL', quantity: 1 })

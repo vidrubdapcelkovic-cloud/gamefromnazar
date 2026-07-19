@@ -58,7 +58,8 @@ const ItemCatalog = Object.freeze({
   }),
   BOW: Object.freeze({
     id: 'BOW',
-    displayName: 'Лук',
+    displayName: 'Ружьё',
+    description: 'Дальнобойное оружие. Стреляет пулями.',
     maxStack: 1,
     category: 'WEAPON',
     consumable: false,
